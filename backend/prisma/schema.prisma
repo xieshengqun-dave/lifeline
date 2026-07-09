@@ -1,0 +1,215 @@
+// Lifeline database schema (Prisma + PostgreSQL)
+// Run: npx prisma migrate dev
+//
+// Status/type values below are plain strings, not Postgres enums, matching the
+// existing style — the canonical list of allowed values lives in
+// src/lib/constants.js. The Booking.status list is LOCKED per CLAUDE.md: do not
+// add/remove values here without updating CLAUDE.md + constants.js together.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Users (patients) ──
+model User {
+  id              String    @id @default(cuid())
+  authProvider    String    @default("guest") // guest | google | apple
+  providerId      String?                     // Google `sub` / Apple `sub` — null for guests
+  isGuest         Boolean   @default(true)
+  guestUpgradedAt DateTime?
+  name            String?
+  phone           String?   @unique
+  email           String?   @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bookings Booking[]
+  ratings  Rating[]
+
+  @@unique([authProvider, providerId])
+}
+
+// ── Operators (ambulance companies) ──
+model Operator {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  passwordHash    String
+  phone           String?
+  address         String? // human-readable, display only — matching/pricing still use baseLat/baseLng
+  baseLat         Float
+  baseLng         Float
+  serviceRadiusKm Float    @default(10) // operator-set, app-validated to 5-10km in v1
+  baseFare        Float
+  perKmRate       Float
+  fleetSummary    String? // e.g. "2 ALS, 1 BLS" — quick-display rollup
+  vettingStatus   String   @default("pending") // pending | approved | suspended
+  online          Boolean  @default(false)
+  ratingAvg       Float? // recomputed on each new Rating write, null until the first
+  ratingCount     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  ambulances Ambulance[]
+  crew       Crew[]
+  bookings   Booking[]
+  offers     BookingOffer[]
+  ratings    Rating[]
+
+  @@index([baseLat, baseLng])
+  @@index([vettingStatus, online])
+}
+
+// ── Ambulances (fleet units) ──
+model Ambulance {
+  id         String   @id @default(cuid())
+  operator   Operator @relation(fields: [operatorId], references: [id])
+  operatorId String
+  plate      String   @unique
+  type       String // ALS | BLS | NEONATAL
+  equipment  String[]
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  bookings Booking[]
+
+  @@index([operatorId])
+}
+
+// ── Crew (drivers/paramedics) — minimal for v1 ──
+model Crew {
+  id         String   @id @default(cuid())
+  operator   Operator @relation(fields: [operatorId], references: [id])
+  operatorId String
+  name       String
+  role       String // DRIVER | PARAMEDIC
+  phone      String?
+  active     Boolean @default(true)
+
+  bookings Booking[]
+
+  @@index([operatorId])
+}
+
+// ── Bookings ──
+model Booking {
+  id         String     @id @default(cuid())
+  user       User?      @relation(fields: [userId], references: [id])
+  userId     String?
+  operator   Operator?  @relation(fields: [operatorId], references: [id])
+  operatorId String? // current operator (offered/accepted) — history lives in offers[]
+  ambulance  Ambulance? @relation(fields: [ambulanceId], references: [id])
+  ambulanceId String? // set by operator on accept (optional in v1)
+  crew       Crew?      @relation(fields: [crewId], references: [id])
+  crewId     String? // set by operator (optional in v1, Phase 3 wires this properly)
+
+  // Trip
+  pickupName      String
+  pickupLat       Float
+  pickupLng       Float
+  destinationName String
+  destinationLat  Float
+  destinationLng  Float
+  distanceKm      Float // pickup -> destination (drives fare)
+
+  // Patient snapshot — sensitive personal + health data.
+  // TODO(human): confirm PDPA retention/deletion policy, access control, and
+  // encryption-at-rest requirements with counsel before handling real patient data.
+  patientAge     Int?
+  patientGender  String?
+  consciousLevel String? // Conscious | Semi-Conscious | Sedated | Unconscious
+  oxygen         Boolean @default(false)
+  oxygenFlow     Int?
+  ivTherapy      Boolean @default(false)
+  medication     String? // set when ivTherapy is true
+  diagnosis      String?
+  specialRequest String?
+
+  // Money
+  // TODO(human/business): flat platform service fee for now (matches the
+  // existing frontend SERVICE_FEE constant), not a % commission. Confirm the
+  // real commission structure with operators before pilot.
+  subtotal        Float?
+  serviceFee      Float?
+  total           Float?
+  paymentMethod   String?
+  paymentStatus   String  @default("pending") // pending | paid | failed
+  paymentProvider String? // null until a real provider is integrated — see services/payment.js
+
+  // Lifecycle — LOCKED list per CLAUDE.md
+  // requested | offered | accepted | enroute | arrived | onboard | completed
+  // | cancelled | declined | expired
+  status    String   @default("requested")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers         BookingOffer[]
+  trackingEvents TrackingEvent[]
+  rating         Rating?
+
+  @@index([userId])
+  @@index([operatorId])
+  @@index([status])
+}
+
+// ── Booking offers — the accept/decline race, with full history ──
+model BookingOffer {
+  id                 String    @id @default(cuid())
+  booking            Booking   @relation(fields: [bookingId], references: [id])
+  bookingId          String
+  operator           Operator  @relation(fields: [operatorId], references: [id])
+  operatorId         String
+  sequence           Int // 1st, 2nd, 3rd... nearest tried, for audit/debugging
+  dispatchDistanceKm Float // operator base -> pickup, snapshot at offer time
+  computedPrice      Float // subtotal snapshot at offer time
+  status             String    @default("pending") // pending | accepted | declined | timed_out | skipped | cancelled
+  offeredAt          DateTime  @default(now())
+  respondedAt        DateTime?
+  expiresAt          DateTime // offeredAt + OFFER_TIMEOUT_SECONDS — persisted source of truth for the timer
+
+  @@unique([bookingId, operatorId]) // never offer the same operator twice for one booking
+  @@index([bookingId])
+  @@index([operatorId, status])
+}
+
+// ── Tracking timeline ──
+model TrackingEvent {
+  id        String   @id @default(cuid())
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  bookingId String
+  label     String // "Booking Requested", "Offer Sent", "Operator Declined - Searching Next", "Accepted", "En Route", ...
+  lat       Float?
+  lng       Float?
+  createdAt DateTime @default(now())
+
+  @@index([bookingId, createdAt])
+}
+
+// ── Post-trip patient rating — one per completed booking ──
+model Rating {
+  id         String   @id @default(cuid())
+  booking    Booking  @relation(fields: [bookingId], references: [id])
+  bookingId  String   @unique // DB-enforced: one rating per booking
+  operator   Operator @relation(fields: [operatorId], references: [id])
+  operatorId String
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  stars      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@index([operatorId])
+}
+
+// ── Platform settings — singleton row (id always 1) ──
+model PlatformSettings {
+  id        Int      @id @default(1)
+  feeType   String   @default("flat") // "flat" | "percent" — see PLATFORM_FEE_TYPE
+  feeValue  Float    @default(15) // RM if flat, percentage points (0-100) if percent
+  updatedAt DateTime @updatedAt
+}

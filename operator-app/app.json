@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Lifeline Operator",
+    "slug": "lifeline-operator",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "lifeline-operator",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lifeline.operator"
+    },
+    "android": {
+      "package": "com.lifeline.operator",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#14233f"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#14233f"
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "apiBaseUrl": "http://192.168.100.133:4000"
+    }
+  }
+}

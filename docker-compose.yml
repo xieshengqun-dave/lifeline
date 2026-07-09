@@ -1,0 +1,31 @@
+# Postgres for the Lifeline backend.
+#
+# NOT exercised on the primary dev machine this was built on — no Docker is
+# installed there; local dev uses Homebrew Postgres 16 directly instead (see
+# backend/README.md). This file exists for CI, other developers, or
+# Railway/Render parity in Phase 5.
+#
+# If you run this on a machine that ALSO has a Homebrew Postgres service
+# bound to 5432, either stop that service first or remap the host port below
+# (e.g. "5433:5432") and update DATABASE_URL to match.
+services:
+  postgres:
+    image: postgres:16
+    container_name: lifeline-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lifeline
+      POSTGRES_PASSWORD: lifeline_dev_password
+      POSTGRES_DB: lifeline
+    ports:
+      - "5432:5432"
+    volumes:
+      - lifeline_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifeline"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  lifeline_pgdata:

@@ -1,0 +1,27 @@
+{
+  "name": "lifeline-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed": "node src/seed.js",
+    "pretest": "dotenv -e .env.test -- npx prisma migrate deploy",
+    "test": "dotenv -e .env.test -- node --test test/booking-flow.test.js && dotenv -e .env.test -- node --test test/cancel-and-expire.test.js && dotenv -e .env.test -- node --test test/settings.test.js && dotenv -e .env.test -- node --test test/rating.test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.18.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
+    "socket.io": "^4.8.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^5.18.0",
+    "supertest": "^7.2.2"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Lifeline",
+    "slug": "lifeline",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "lifeline",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lifeline.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Lifeline uses your location to set the ambulance pickup point.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Lifeline uses your location to track the ambulance to your pickup point."
+      }
+    },
+    "android": {
+      "package": "com.lifeline.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#14233f"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-location",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#14233f"
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "apiBaseUrl": "http://192.168.100.133:4000"
+    }
+  }
+}
