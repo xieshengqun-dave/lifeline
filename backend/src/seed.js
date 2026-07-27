@@ -1,4 +1,4 @@
-// Seed the 5 demo Klang Valley operators (+ ambulances + crew) so the
+// Seed the 6 demo Klang Valley operators (+ ambulances + crew) so the
 // marketplace has matchable data. Idempotent: upserts by email/plate.
 // Run: npm run seed
 import { PrismaClient } from "@prisma/client";

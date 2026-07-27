@@ -1,4 +1,4 @@
-// Demo fixture data for Phase 1 — 5 Klang Valley operators with real-ish
+// Demo fixture data for Phase 1 — 6 Klang Valley operators with real-ish
 // coordinates, distinct rates, and fleets. Shared by seed.js (dev DB) and
 // used as a reference shape by test fixtures (which use their own smaller,
 // distance-controlled set — see test/helpers/testDb.js).
@@ -115,6 +115,28 @@ export const operators = [
     crew: [
       { name: "Ravi Chandran", role: "DRIVER", phone: "+60123450009" },
       { name: "Siti Nurhaliza", role: "PARAMEDIC", phone: "+60123450010" },
+    ],
+  },
+  {
+    name: "Klang Response Ambulance",
+    email: "ops@klangresponse.example",
+    phone: "+60312345006",
+    address: "Jalan Meru, Klang",
+    baseLat: 3.0448,
+    baseLng: 101.4457,
+    serviceRadiusKm: 10,
+    baseFare: 140,
+    perKmRate: 6.5,
+    fleetSummary: "1 ALS, 1 BLS",
+    vettingStatus: "approved",
+    online: true,
+    ambulances: [
+      { plate: "KLG 6001", type: "ALS", equipment: ["Ventilator", "Monitor", "Oxygen"] },
+      { plate: "KLG 6002", type: "BLS", equipment: ["Oxygen", "Defibrillator"] },
+    ],
+    crew: [
+      { name: "Hafiz Ramli", role: "DRIVER", phone: "+60123450011" },
+      { name: "Siti Zulaikha", role: "PARAMEDIC", phone: "+60123450012" },
     ],
   },
 ];
