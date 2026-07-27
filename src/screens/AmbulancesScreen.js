@@ -1,7 +1,11 @@
 import React from "react";
-import { View, Text, ScrollView, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Dimensions } from "react-native";
+import { View, Text, ScrollView, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Dimensions, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+
+// Google provider is Android-only inside Expo Go; iOS falls back to Apple
+// Maps there. A future dev build with a Google Maps key can drop this split.
+const MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
@@ -158,7 +162,7 @@ export default function AmbulancesScreen({ navigation }) {
 
       {!state.loading && !state.error && state.operators.length > 0 && (
         <View style={{ flex: 1 }}>
-          <MapView ref={mapRef} style={StyleSheet.absoluteFill} provider={PROVIDER_GOOGLE} initialRegion={initialRegion}>
+          <MapView ref={mapRef} style={StyleSheet.absoluteFill} provider={MAP_PROVIDER} initialRegion={initialRegion}>
             {booking.from && (
               <Marker
                 coordinate={{ latitude: booking.from.latitude, longitude: booking.from.longitude }}
