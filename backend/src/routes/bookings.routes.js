@@ -94,6 +94,8 @@ router.post(
       operatorId: operator.id,
       name: operator.name,
       fleetSummary: operator.fleetSummary,
+      baseLat: operator.baseLat,
+      baseLng: operator.baseLng,
       dispatchDistanceKm: Math.round(dispatchDistanceKm * 10) / 10,
       etaMinutes: computeEtaMinutes(dispatchDistanceKm),
       price: computeFare({ operator, distanceKm, feeSetting }),
