@@ -11,3 +11,4 @@ backend/.env
 backend/.env.test
 backend/node_modules/
 *.tgz
+CREDENTIALS.md
