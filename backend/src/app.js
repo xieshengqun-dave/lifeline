@@ -8,6 +8,7 @@ import authRoutes from "./routes/auth.routes.js";
 import bookingsRoutes from "./routes/bookings.routes.js";
 import operatorRoutes from "./routes/operator.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import statsRoutes from "./routes/stats.routes.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -20,6 +21,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/bookings", bookingsRoutes);
 app.use("/api/operator", operatorRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/stats", statsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

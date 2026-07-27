@@ -6,8 +6,15 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius, colors } from "../theme/tokens";
 import { AuthContext } from "../../App";
+import { getOverviewStats } from "../api/client";
+import { HOSPITALS } from "../lib/hospitals";
 import Card from "../components/ui/Card";
 import BottomTabBar from "../components/ui/BottomTabBar";
+
+function fmtResponse(secs) {
+  if (secs < 60) return "< 1 min";
+  return `${Math.round(secs / 60)} min`;
+}
 
 // Post-login landing — per design_handoff_lifeline/PATIENT-APP-SPEC.md's
 // "0 · Home (post-login landing) — 2a" section, which explicitly replaces
@@ -16,6 +23,23 @@ export default function WelcomeScreen({ navigation }) {
   const { user, signOut } = React.useContext(AuthContext);
   const greeting = user?.name ? `Hello, ${user.name}` : "Hello there";
   const initial = (user?.name?.[0] || "G").toUpperCase();
+
+  // Real marketplace numbers (replaces the design mock's hardcoded values).
+  // "—" until loaded / when the backend has no data — never a made-up figure.
+  const [stats, setStats] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = () => getOverviewStats().then((r) => { if (!cancelled) setStats(r); }).catch(() => {});
+    load();
+    const unsub = navigation.addListener("focus", load);
+    return () => { cancelled = true; unsub(); };
+  }, [navigation]);
+
+  const statTiles = [
+    [stats?.avgResponseSecs != null ? fmtResponse(stats.avgResponseSecs) : "—", "Avg. response time"],
+    [stats ? String(stats.activeAmbulances) : "—", "Active ambulances"],
+    [String(HOSPITALS.length), "Hospitals listed"],
+  ];
 
   function handleNotifications() {
     Alert.alert("Notifications", "Notifications aren't available yet.");
@@ -84,7 +108,7 @@ export default function WelcomeScreen({ navigation }) {
 
         <Text style={s.sect}>LIVE OVERVIEW</Text>
         <View style={s.stats}>
-          {[["8 mins", "Avg. response time"], ["42", "Active ambulances"], ["120+", "Hospitals connected"]].map(([n, l]) => (
+          {statTiles.map(([n, l]) => (
             <Card key={l} style={s.stat}>
               <Text style={s.statN}>{n}</Text>
               <Text style={s.statL}>{l}</Text>

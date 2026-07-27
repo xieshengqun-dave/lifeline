@@ -117,6 +117,11 @@ unverified mode works).
 - Patient can **cancel** or **skip to next** during the wait (Grab-style).
 - Auth = **guest + Google + Apple**.
 - No-operators-left → **call 999** fallback.
+- Scheduled transport (when built): operators get the offer **near pickup time**
+  (~45 min before), not at booking time — decided 2026-07-27; needs a backend
+  scheduler, not yet implemented.
+- Crew assignment = **operator's free choice** (checkbox team, ≥1 member, no
+  role-composition rule) — decided 2026-07-27.
 
 ## Open questions (decide with operators)
 
@@ -143,8 +148,12 @@ bug came out of it:
   lean safe-field select) + `TripsScreen` rewritten from placeholder to a real history
   list (status pills per the locked state machine, pull-to-refresh, refetch-on-focus).
   Activity tab / Schedule Transport / Patient Transfer cards remain honest placeholders
-  (user chose Trips first); **Home's "Live Overview" stats are still hardcoded fakes —
-  flagged, fix or remove before any operator demo.**
+  (user chose Trips first). **Home's fake "Live Overview" stats fixed later this same
+  session**: new `GET /api/stats/overview` (patient-auth) returns the real active-
+  ambulance count (approved+online operators only) and real avg offer→accept time
+  (null until data exists; UI shows "—", never invents). Third tile relabeled
+  "Hospitals listed" with the real curated-list count (11) — "120+ hospitals
+  connected" was unfixably fake (no partnership system exists).
 - **"No units available" from the user's home diagnosed as correct behavior**: all 5
   seeded operators were PJ/KL-centred (traced the phone's real quote via a temp debug
   log — pickup at Bandar Parklands, south Klang). Seeded a 6th operator
