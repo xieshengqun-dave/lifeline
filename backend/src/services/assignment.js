@@ -13,7 +13,7 @@ const ASSIGNABLE_STATUSES = [
   BOOKING_STATUS.ONBOARD,
 ];
 
-export async function assignBookingResources(bookingId, operatorId, { ambulanceId, crewId }) {
+export async function assignBookingResources(bookingId, operatorId, { ambulanceId, crewIds }) {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!booking) throw new HttpError(404, "not_found", "Booking not found");
   if (booking.operatorId !== operatorId) throw new HttpError(403, "forbidden", "Not your booking");
@@ -32,13 +32,16 @@ export async function assignBookingResources(bookingId, operatorId, { ambulanceI
     data.ambulanceId = ambulanceId;
   }
 
-  if (crewId) {
-    const crew = await prisma.crew.findUnique({ where: { id: crewId } });
-    if (!crew || crew.operatorId !== operatorId) {
-      throw new HttpError(404, "crew_not_found", "Crew member not found");
+  if (crewIds?.length) {
+    const uniqueIds = [...new Set(crewIds)];
+    const crew = await prisma.crew.findMany({ where: { id: { in: uniqueIds }, operatorId } });
+    if (crew.length !== uniqueIds.length) {
+      throw new HttpError(404, "crew_not_found", "One or more crew members not found");
     }
-    if (!crew.active) throw new HttpError(409, "crew_inactive", "Crew member is not active");
-    data.crewId = crewId;
+    const inactive = crew.find((c) => !c.active);
+    if (inactive) throw new HttpError(409, "crew_inactive", `${inactive.name} is not active`);
+    // Replaces the whole assigned team — same re-callable semantics as before.
+    data.crew = { set: uniqueIds.map((id) => ({ id })) };
   }
 
   const updated = await prisma.booking.update({

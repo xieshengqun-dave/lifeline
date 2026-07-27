@@ -61,9 +61,9 @@ const statusSchema = z.object({
 const assignSchema = z
   .object({
     ambulanceId: z.string().min(1).optional(),
-    crewId: z.string().min(1).optional(),
+    crewIds: z.array(z.string().min(1)).min(1).optional(),
   })
-  .refine((b) => b.ambulanceId || b.crewId, { message: "ambulanceId or crewId is required" });
+  .refine((b) => b.ambulanceId || b.crewIds?.length, { message: "ambulanceId or crewIds is required" });
 
 const ratingSchema = z.object({
   stars: z.number().int().min(1).max(5),
@@ -256,7 +256,7 @@ router.post(
     res.json({
       bookingId: booking.id,
       ambulanceId: booking.ambulanceId,
-      crewId: booking.crewId,
+      crewIds: booking.crew.map((c) => c.id),
       ambulance: booking.ambulance,
       crew: booking.crew,
     });

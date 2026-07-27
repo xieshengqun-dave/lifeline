@@ -24,7 +24,7 @@ export default function ActiveTripScreen({ route, navigation }) {
   const [fleet, setFleet] = React.useState({ ambulances: [], crew: [] });
   const [editingAssignment, setEditingAssignment] = React.useState(false);
   const [selectedAmbulanceId, setSelectedAmbulanceId] = React.useState(null);
-  const [selectedCrewId, setSelectedCrewId] = React.useState(null);
+  const [selectedCrewIds, setSelectedCrewIds] = React.useState([]);
   const [assigning, setAssigning] = React.useState(false);
   const [advancing, setAdvancing] = React.useState(false);
 
@@ -32,10 +32,14 @@ export default function ActiveTripScreen({ route, navigation }) {
     const b = await getOperatorBooking(bookingId);
     setBooking(b);
     setSelectedAmbulanceId(b.ambulanceId);
-    setSelectedCrewId(b.crewId);
-    setEditingAssignment(!b.ambulanceId || !b.crewId);
+    setSelectedCrewIds((b.crew || []).map((c) => c.id));
+    setEditingAssignment(!b.ambulanceId || !(b.crew || []).length);
     return b;
   }, [bookingId]);
+
+  function toggleCrew(id) {
+    setSelectedCrewIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }
 
   React.useEffect(() => {
     let cancelled = false;
@@ -58,7 +62,7 @@ export default function ActiveTripScreen({ route, navigation }) {
   async function confirmAssignment() {
     setAssigning(true);
     try {
-      await assignBookingResources(bookingId, { ambulanceId: selectedAmbulanceId, crewId: selectedCrewId });
+      await assignBookingResources(bookingId, { ambulanceId: selectedAmbulanceId, crewIds: selectedCrewIds });
       await loadBooking();
     } catch (e) {
       Alert.alert("Couldn't assign", e.message || "Please try again.");
@@ -115,7 +119,9 @@ export default function ActiveTripScreen({ route, navigation }) {
         {!editingAssignment ? (
           <View style={t.assignedCard}>
             <Text style={t.tv}>{booking.ambulance?.plate} · {booking.ambulance?.type}</Text>
-            <Text style={t.sub}>{booking.crew?.name} · {booking.crew?.role}</Text>
+            {(booking.crew || []).map((c) => (
+              <Text key={c.id} style={t.sub}>{c.name} · {c.role}</Text>
+            ))}
             <TouchableOpacity onPress={() => setEditingAssignment(true)}>
               <Text style={t.changeLink}>Change</Text>
             </TouchableOpacity>
@@ -131,19 +137,22 @@ export default function ActiveTripScreen({ route, navigation }) {
                 </View>
               </TouchableOpacity>
             ))}
-            <Text style={t.subSect}>Crew</Text>
-            {fleet.crew.map((c) => (
-              <TouchableOpacity key={c.id} style={t.pickRow} onPress={() => setSelectedCrewId(c.id)}>
-                <Text style={t.pickT}>{c.name} · {c.role}</Text>
-                <View style={[t.radio, selectedCrewId === c.id && t.radioOn]}>
-                  {selectedCrewId === c.id && <View style={t.dot} />}
-                </View>
-              </TouchableOpacity>
-            ))}
+            <Text style={t.subSect}>Crew (select everyone riding)</Text>
+            {fleet.crew.map((c) => {
+              const checked = selectedCrewIds.includes(c.id);
+              return (
+                <TouchableOpacity key={c.id} style={t.pickRow} onPress={() => toggleCrew(c.id)}>
+                  <Text style={t.pickT}>{c.name} · {c.role}</Text>
+                  <View style={[t.checkbox, checked && t.checkboxOn]}>
+                    {checked && <Ionicons name="checkmark" size={13} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
             <TouchableOpacity
-              style={[t.confirmBtn, (!selectedAmbulanceId || !selectedCrewId || assigning) && t.btnOff]}
+              style={[t.confirmBtn, (!selectedAmbulanceId || !selectedCrewIds.length || assigning) && t.btnOff]}
               onPress={confirmAssignment}
-              disabled={!selectedAmbulanceId || !selectedCrewId || assigning}
+              disabled={!selectedAmbulanceId || !selectedCrewIds.length || assigning}
             >
               {assigning ? <ActivityIndicator color="#fff" /> : <Text style={t.confirmBtnT}>Confirm Assignment</Text>}
             </TouchableOpacity>
@@ -162,11 +171,16 @@ export default function ActiveTripScreen({ route, navigation }) {
       </ScrollView>
 
       <View style={t.footer}>
-        {booking.crew?.phone && (
-          <TouchableOpacity style={t.callBtn} onPress={() => Linking.openURL(`tel:${booking.crew.phone}`)}>
-            <Ionicons name="call" size={20} color={C.teal} />
-          </TouchableOpacity>
-        )}
+        {(() => {
+          // Ring the paramedic if one's aboard, otherwise anyone with a phone.
+          const team = booking.crew || [];
+          const callee = team.find((c) => c.role === "PARAMEDIC" && c.phone) || team.find((c) => c.phone);
+          return callee ? (
+            <TouchableOpacity style={t.callBtn} onPress={() => Linking.openURL(`tel:${callee.phone}`)}>
+              <Ionicons name="call" size={20} color={C.teal} />
+            </TouchableOpacity>
+          ) : null;
+        })()}
         {nextStatus && (
           <GradientButton
             label={NEXT_ACTION_LABEL[booking.status]}
@@ -195,6 +209,8 @@ const t = StyleSheet.create({
   radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: C.line, alignItems: "center", justifyContent: "center" },
   radioOn: { borderColor: C.teal },
   dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.teal },
+  checkbox: { width: 19, height: 19, borderRadius: 5, borderWidth: 2, borderColor: C.line, alignItems: "center", justifyContent: "center" },
+  checkboxOn: { backgroundColor: C.teal, borderColor: C.teal },
   confirmBtn: { backgroundColor: C.teal, borderRadius: radius.button, padding: 14, alignItems: "center", marginTop: 14 },
   confirmBtnT: { ...type.buttonLabel, fontSize: 14, color: "#fff" },
   btnOff: { opacity: 0.35 },

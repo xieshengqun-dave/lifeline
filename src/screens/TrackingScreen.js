@@ -67,7 +67,9 @@ export default function TrackingScreen({ navigation }) {
     );
   }
 
-  const crew = details.crew;
+  // crew is a team (array) — operators assign whoever's riding.
+  const crew = Array.isArray(details.crew) ? details.crew : details.crew ? [details.crew] : [];
+  const lead = crew.find((c) => c.role === "PARAMEDIC") || crew[0];
   const ambulance = details.ambulance;
   const operator = details.operator;
 
@@ -100,12 +102,14 @@ export default function TrackingScreen({ navigation }) {
 
         <View style={tr.crew}>
           <View style={tr.avatar}>
-            <Text style={tr.avatarT}>{crew ? crew.name.split(" ").map((n) => n[0]).join("").slice(0, 2) : "?"}</Text>
+            <Text style={tr.avatarT}>{lead ? lead.name.split(" ").map((n) => n[0]).join("").slice(0, 2) : "?"}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={tr.name}>{crew ? crew.name : "Crew not yet assigned"}</Text>
+            <Text style={tr.name}>
+              {lead ? lead.name + (crew.length > 1 ? ` +${crew.length - 1} crew` : "") : "Crew not yet assigned"}
+            </Text>
             <Text style={tr.role}>
-              {crew ? crew.role : "—"} · {ambulance ? ambulance.plate : "Ambulance not yet assigned"}
+              {lead ? lead.role : "—"} · {ambulance ? ambulance.plate : "Ambulance not yet assigned"}
             </Text>
           </View>
           {operator?.phone && (

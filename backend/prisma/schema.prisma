@@ -105,8 +105,7 @@ model Booking {
   operatorId String? // current operator (offered/accepted) — history lives in offers[]
   ambulance  Ambulance? @relation(fields: [ambulanceId], references: [id])
   ambulanceId String? // set by operator on accept (optional in v1)
-  crew       Crew?      @relation(fields: [crewId], references: [id])
-  crewId     String? // set by operator (optional in v1, Phase 3 wires this properly)
+  crew       Crew[] // assigned team (any mix of drivers/paramedics), operator's call
 
   // Trip
   pickupName      String
