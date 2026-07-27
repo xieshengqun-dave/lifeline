@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
+    "prestart": "npx prisma migrate deploy",
     "start": "node src/server.js",
     "seed": "node src/seed.js",
     "pretest": "dotenv -e .env.test -- npx prisma migrate deploy",
