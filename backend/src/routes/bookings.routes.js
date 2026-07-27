@@ -164,6 +164,33 @@ router.post(
   })
 );
 
+// Patient's own trip history, newest first. Lean select — no patient
+// snapshot fields needed for a list, and never the operator relation
+// without an explicit safe-field select.
+router.get(
+  "/",
+  requirePatientAuth,
+  asyncHandler(async (req, res) => {
+    const bookings = await prisma.booking.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        pickupName: true,
+        destinationName: true,
+        distanceKm: true,
+        total: true,
+        operator: { select: { id: true, name: true } },
+        rating: { select: { stars: true } },
+      },
+    });
+    res.json(bookings);
+  })
+);
+
 router.get(
   "/:id",
   requirePatientAuth,

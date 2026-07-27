@@ -57,6 +57,7 @@ export const getBookingQuote = (p) => req("/api/bookings/quote", { method: "POST
 export const createBooking = (p) => req("/api/bookings", { method: "POST", body: JSON.stringify(p) });
 export const skipBooking = (id) => req(`/api/bookings/${id}/skip`, { method: "POST" });
 export const cancelBooking = (id) => req(`/api/bookings/${id}/cancel`, { method: "POST" });
+export const getMyBookings = () => req("/api/bookings");
 export const getBooking = (id) => req(`/api/bookings/${id}`);
 export const getTracking = (id) => req(`/api/bookings/${id}/tracking`);
 export const submitRating = (id, p) => req(`/api/bookings/${id}/rating`, { method: "POST", body: JSON.stringify(p) });
