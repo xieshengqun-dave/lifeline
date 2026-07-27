@@ -31,6 +31,7 @@ import PaymentScreen from "./src/screens/PaymentScreen";
 import TrackingScreen from "./src/screens/TrackingScreen";
 import RatingScreen from "./src/screens/RatingScreen";
 import TripsScreen from "./src/screens/TripsScreen";
+import ScheduleScreen from "./src/screens/ScheduleScreen";
 import ActivityScreen from "./src/screens/ActivityScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 
@@ -49,6 +50,7 @@ export const AuthContext = React.createContext(null);
 
 const initialBooking = {
   bookingType: "emergency", // emergency | transfer — set by the Home entry point
+  scheduledAt: null, // ISO string — set by ScheduleScreen; null = book now
   from: null, to: null, distanceKm: 0,
   age: "45", gender: "Male", cond: "Fully Conscious",
   oxy: "Yes", flow: "<5L", iv: "No", medication: "",
@@ -152,6 +154,7 @@ export default function App() {
           >
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Welcome" component={WelcomeScreen} />
+            <Stack.Screen name="Schedule" component={ScheduleScreen} />
             <Stack.Screen name="Location" component={LocationScreen} />
             <Stack.Screen name="AddressPicker" component={AddressPickerScreen} />
             <Stack.Screen name="HospitalPicker" component={HospitalPickerScreen} />

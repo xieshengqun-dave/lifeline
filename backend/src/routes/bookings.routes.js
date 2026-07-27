@@ -46,6 +46,9 @@ const quoteSchema = z.object({
   patient: patientSchema,
 });
 
+const MIN_SCHEDULE_LEAD_MS = 15 * 60 * 1000; // closer than this → just book now
+const MAX_SCHEDULE_AHEAD_MS = 30 * 24 * 60 * 60 * 1000;
+
 const createBookingSchema = z.object({
   operatorId: z.string().min(1),
   pickup: locationSchema,
@@ -53,6 +56,16 @@ const createBookingSchema = z.object({
   patient: patientSchema,
   paymentMethod: z.string().min(1),
   bookingType: z.enum(["emergency", "transfer"]).default("emergency"),
+  scheduledAt: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .refine((s) => !s || Date.parse(s) - Date.now() >= MIN_SCHEDULE_LEAD_MS, {
+      message: "Scheduled time must be at least 15 minutes from now — book immediately instead",
+    })
+    .refine((s) => !s || Date.parse(s) - Date.now() <= MAX_SCHEDULE_AHEAD_MS, {
+      message: "Scheduled time cannot be more than 30 days ahead",
+    }),
 });
 
 const statusSchema = z.object({
@@ -114,7 +127,7 @@ router.post(
   requirePatientAuth,
   validate(createBookingSchema),
   asyncHandler(async (req, res) => {
-    const { operatorId, pickup, destination, patient, paymentMethod, bookingType } = req.body;
+    const { operatorId, pickup, destination, patient, paymentMethod, bookingType, scheduledAt } = req.body;
     const distanceKm = haversineKm(pickup.lat, pickup.lng, destination.lat, destination.lng);
 
     const booking = await createBookingWithFirstOffer({
@@ -126,6 +139,7 @@ router.post(
       patient,
       paymentMethod,
       bookingType,
+      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
     });
 
     const currentOffer = await prisma.bookingOffer.findFirst({
@@ -137,6 +151,7 @@ router.post(
       id: booking.id,
       status: booking.status,
       bookingType: booking.bookingType,
+      scheduledAt: booking.scheduledAt,
       operatorId: booking.operatorId,
       distanceKm: booking.distanceKm,
       subtotal: booking.subtotal,
@@ -182,6 +197,7 @@ router.get(
         id: true,
         status: true,
         bookingType: true,
+        scheduledAt: true,
         createdAt: true,
         pickupName: true,
         destinationName: true,

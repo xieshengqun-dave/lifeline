@@ -117,9 +117,8 @@ unverified mode works).
 - Patient can **cancel** or **skip to next** during the wait (Grab-style).
 - Auth = **guest + Google + Apple**.
 - No-operators-left → **call 999** fallback.
-- Scheduled transport (when built): operators get the offer **near pickup time**
-  (~45 min before), not at booking time — decided 2026-07-27; needs a backend
-  scheduler, not yet implemented.
+- Scheduled transport: operators get the offer **near pickup time** (~45 min
+  before), not at booking time — decided AND built 2026-07-27 (see log entry).
 - Crew assignment = **operator's free choice** (checkbox team, ≥1 member, no
   role-composition rule) — decided 2026-07-27.
 
@@ -186,10 +185,34 @@ bug came out of it:
 - Verified at every step: backend suite 22/22 (one known-class socket-hang-up flake,
   clean on rerun), `expo export` clean both apps, live end-to-end API walkthrough of
   book → accept → multi-crew assign → patient sees team → cancel.
+- **Later same session — Patient Transfer + Schedule Transport built** (user asked for
+  both; fake-stats fix landed just before them, see commits):
+  - **Patient Transfer**: `Booking.bookingType` (`emergency` default | `transfer`),
+    zod-validated; Home card starts the same flow tagged as transfer; Review notes it;
+    operators get a TRANSFER pill on incoming requests (socket + fetch payloads both)
+    and a note on the active trip.
+  - **Schedule Transport**: `Booking.scheduledAt` + `preferredOperatorId` (keeps the
+    quote-time choice until dispatch — `operatorId` tracks the currently-offered op).
+    Offer race starts `DISPATCH_LEAD_MS` (45 min) before pickup per the locked
+    decision; inside-the-window bookings dispatch immediately (verified). Same
+    reliability architecture as offers: DB is source of truth, in-memory dispatch
+    timers, boot recovery (`recoverScheduledDispatches`, restart-tested for real) and
+    the existing sweep extended to catch due dispatches (also covers the >24.8-day
+    setTimeout clamp). Validation: ≥15 min ahead (else "book now"), ≤30 days. Cancel
+    pre-dispatch works and disarms the timer (verified). New `ScheduleScreen`
+    (native datetime picker, new dep `@react-native-community/datetimepicker`);
+    Trips tab shows a "Scheduled" pill + pickup time and **trip rows are now
+    tappable** (open the tracking timeline via BookingContext). Operators see the
+    scheduled pickup time on request cards + active trip.
+  - **Known gap, flagged**: no push notifications — if a scheduled booking's dispatch
+    finds no operator (or all decline) 45 min before pickup, the patient only learns
+    by opening the Trips tab. Push notifications are the missing piece before
+    scheduling is pilot-trustworthy.
 - **Next:** the real two-phone demo from Klang (patient + operator app, accept within
-  60s, advance statuses, rating lands in Trips). Then: production DB still only has
-  the original 5 operators (dev-only seed for Klang) — reseed prod if demoing against
-  Railway.
+  60s, advance statuses, rating lands in Trips) — now including a scheduled booking
+  (schedule ~20 min out → dispatches immediately → operator sees scheduled time).
+  Then: production DB still only has the original 5 operators (dev-only seed for
+  Klang) — reseed prod if demoing against Railway.
 
 ### 2026-07-08 (cont'd) — Real-browser bug hunt, updated design handoff, Home screen rebuild
 The user started actually testing the redesign in a real browser/device — the standing

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
@@ -52,7 +52,19 @@ export default function ReviewScreen({ navigation }) {
         patient: toApiPatient(booking),
         paymentMethod: booking.payMethod,
         bookingType: booking.bookingType || "emergency",
+        scheduledAt: booking.scheduledAt || undefined,
       });
+      // Scheduled bookings have no live offer race to watch — confirm and
+      // send the user home; the trip lives in the Trips tab until dispatch.
+      if (res.scheduledAt && !res.currentOffer) {
+        const when = new Date(res.scheduledAt);
+        Alert.alert(
+          "Transport scheduled",
+          `Pickup ${when.toLocaleDateString()} at ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}.\n\nWe'll start finding your operator about 45 minutes before pickup. Track or cancel it from the Trips tab.`,
+          [{ text: "OK", onPress: goHome }]
+        );
+        return;
+      }
       update({
         bookingId: res.id,
         bookingStatus: res.status,
@@ -76,6 +88,12 @@ export default function ReviewScreen({ navigation }) {
           <Text style={rv.tv}>→ {booking.to?.name || "Destination"}</Text>
           {booking.bookingType === "transfer" && (
             <Text style={rv.body}>Non-emergency patient transfer</Text>
+          )}
+          {booking.scheduledAt && (
+            <Text style={[rv.body, { color: C.tealDeep }]}>
+              Scheduled pickup: {new Date(booking.scheduledAt).toLocaleDateString()}{" "}
+              {new Date(booking.scheduledAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+            </Text>
           )}
 
           <Text style={[rv.sect, { marginTop: 14 }]}>AMBULANCE</Text>

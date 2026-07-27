@@ -5,12 +5,13 @@ import http from "http";
 import app from "./app.js";
 import { config } from "./lib/env.js";
 import { initSocket } from "./lib/socket.js";
-import { recoverPendingOffers, startOfferSweep } from "./services/offerEngine.js";
+import { recoverPendingOffers, recoverScheduledDispatches, startOfferSweep } from "./services/offerEngine.js";
 
 const httpServer = http.createServer(app);
 initSocket(httpServer);
 
 await recoverPendingOffers();
+await recoverScheduledDispatches();
 startOfferSweep();
 
 httpServer.listen(config.port, () => console.log(`Lifeline API on :${config.port}`));

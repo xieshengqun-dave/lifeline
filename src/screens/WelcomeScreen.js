@@ -25,10 +25,11 @@ export default function WelcomeScreen({ navigation }) {
   const greeting = user?.name ? `Hello, ${user.name}` : "Hello there";
   const initial = (user?.name?.[0] || "G").toUpperCase();
 
-  // Both entry points share the same flow — the type just tags the booking
-  // (operators see a TRANSFER badge on non-emergency requests).
+  // All entry points share the same flow — the type tags the booking
+  // (operators see a TRANSFER badge on non-emergency requests) and
+  // scheduledAt is cleared unless the user came through ScheduleScreen.
   function startRequest(bookingType) {
-    update({ bookingType });
+    update({ bookingType, scheduledAt: null });
     navigation.navigate("Location");
   }
 
@@ -98,13 +99,15 @@ export default function WelcomeScreen({ navigation }) {
         </LinearGradient>
 
         <View style={s.twoCard}>
-          <Card style={s.mini}>
-            <View style={s.miniIconTile}>
-              <Ionicons name="calendar-outline" size={18} color={C.tealDeep} />
-            </View>
-            <Text style={s.miniT}>Schedule Transport</Text>
-            <Text style={s.miniS}>Book for a later time</Text>
-          </Card>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.85} onPress={() => navigation.navigate("Schedule")}>
+            <Card style={[s.mini, { flex: undefined }]}>
+              <View style={s.miniIconTile}>
+                <Ionicons name="calendar-outline" size={18} color={C.tealDeep} />
+              </View>
+              <Text style={s.miniT}>Schedule Transport</Text>
+              <Text style={s.miniS}>Book for a later time</Text>
+            </Card>
+          </TouchableOpacity>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.85} onPress={() => startRequest("transfer")}>
             <Card style={[s.mini, { flex: undefined }]}>
               <View style={s.miniIconTile}>

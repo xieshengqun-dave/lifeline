@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius, shadows } from "../theme/tokens";
 import { getMyBookings, ApiError } from "../api/client";
+import { BookingContext } from "../../App";
 import Header from "./_Header";
 import BottomTabBar from "../components/ui/BottomTabBar";
 import Card from "../components/ui/Card";
@@ -32,7 +33,16 @@ function tripDate(iso) {
 }
 
 export default function TripsScreen({ navigation }) {
+  const { update } = React.useContext(BookingContext);
   const [state, setState] = React.useState({ loading: true, refreshing: false, error: null, trips: [] });
+
+  // TrackingScreen reads bookingId from BookingContext — point it at the
+  // tapped trip. Its event timeline works for every status, including
+  // scheduled trips that haven't dispatched yet.
+  function openTrip(t) {
+    update({ bookingId: t.id, bookingStatus: t.status });
+    navigation.navigate("Tracking");
+  }
 
   const load = React.useCallback(async (refreshing = false) => {
     setState((s) => ({ ...s, loading: !refreshing, refreshing, error: null }));
@@ -86,13 +96,20 @@ export default function TripsScreen({ navigation }) {
           contentContainerStyle={{ padding: spacing.screenPad, paddingBottom: 90 }}
           refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => load(true)} tintColor={C.teal} />}
           renderItem={({ item: t }) => {
-            const pill = STATUS_PILL[t.status] || { label: t.status, variant: "neutral" };
+            const scheduledPending = t.scheduledAt && t.status === "requested";
+            const pill = scheduledPending
+              ? { label: "Scheduled", variant: "active" }
+              : STATUS_PILL[t.status] || { label: t.status, variant: "neutral" };
             return (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => openTrip(t)}>
               <Card style={s.card}>
                 <View style={s.topRow}>
                   <Text style={s.date}>{tripDate(t.createdAt)}</Text>
                   <StatusPill label={pill.label} variant={pill.variant} />
                 </View>
+                {t.scheduledAt && (
+                  <Text style={s.scheduled}>Pickup: {tripDate(t.scheduledAt)}</Text>
+                )}
                 <View style={s.routeRow}>
                   <View style={s.routeIcons}>
                     <View style={[s.dot, { backgroundColor: C.green }]} />
@@ -112,6 +129,7 @@ export default function TripsScreen({ navigation }) {
                   <Text style={s.price}>{t.total != null ? `RM${t.total.toFixed(0)}` : ""}</Text>
                 </View>
               </Card>
+              </TouchableOpacity>
             );
           }}
         />
@@ -132,6 +150,7 @@ const s = StyleSheet.create({
   card: { padding: spacing.cardPad, marginBottom: spacing.cardGap, ...shadows.neutralCard },
   topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   date: { ...type.body, fontSize: 12, color: C.faint },
+  scheduled: { ...type.bodySemibold, fontSize: 12.5, color: C.tealDeep, marginBottom: 10, marginTop: -4 },
   routeRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
   routeIcons: { alignItems: "center", paddingTop: 4 },
   dot: { width: 10, height: 10, borderRadius: 5 },

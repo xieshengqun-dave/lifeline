@@ -57,7 +57,7 @@ router.get(
     const bookings = await prisma.booking.findMany({
       where: { operatorId: req.operatorId, status: { in: OPERATOR_BOOKING_STATUSES } },
       select: {
-        id: true, status: true, bookingType: true, pickupName: true, destinationName: true, distanceKm: true,
+        id: true, status: true, bookingType: true, scheduledAt: true, pickupName: true, destinationName: true, distanceKm: true,
         subtotal: true, serviceFee: true, total: true, paymentStatus: true,
         createdAt: true, updatedAt: true,
         ambulance: { select: { id: true, plate: true, type: true } },
@@ -102,6 +102,7 @@ router.get(
         offerId: offer.id,
         bookingId: booking.id,
         bookingType: booking.bookingType,
+        scheduledAt: booking.scheduledAt,
         dispatchDistanceKm: offer.dispatchDistanceKm,
         // Read straight off the booking, not re-derived from a possibly-since
         // -changed platform fee setting — booking.serviceFee/total were

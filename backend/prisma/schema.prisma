@@ -144,6 +144,15 @@ model Booking {
   // (non-emergency inter-facility / planned medical transport).
   bookingType String @default("emergency")
 
+  // Scheduled bookings: requested pickup time (null = dispatch immediately).
+  // The offer race starts DISPATCH_LEAD_MS before scheduledAt (decided
+  // 2026-07-27: offer near pickup time, not at booking time).
+  // preferredOperatorId preserves the patient's quote-time choice until
+  // dispatch — Booking.operatorId only tracks the *currently offered*
+  // operator once the race starts.
+  scheduledAt         DateTime?
+  preferredOperatorId String?
+
   // Lifecycle — LOCKED list per CLAUDE.md
   // requested | offered | accepted | enroute | arrived | onboard | completed
   // | cancelled | declined | expired

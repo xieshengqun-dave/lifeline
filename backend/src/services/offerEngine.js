@@ -14,6 +14,35 @@ import { HttpError } from "../middleware/errorHandler.js";
 // timer is lost (e.g. an ungraceful crash).
 const timers = new Map();
 
+// Scheduled bookings: the offer race starts this long before scheduledAt
+// (locked decision 2026-07-27 — operators commit near pickup time, not at
+// booking time). Same timer/recovery/sweep architecture as offers:
+// Booking.scheduledAt is the persisted source of truth, these timers only
+// fire the dispatch.
+export const DISPATCH_LEAD_MS = 45 * 60 * 1000;
+const dispatchTimers = new Map(); // bookingId -> timeout handle
+
+function scheduleDispatchTimer(bookingId, ms) {
+  clearDispatchTimer(bookingId);
+  // setTimeout clamps >24.8-day delays; validation caps scheduling at 30
+  // days, so re-arm via the sweep instead of one giant timer for far dates.
+  if (ms > 2_000_000_000) return;
+  const handle = setTimeout(() => {
+    dispatchScheduledBooking(bookingId).catch((err) =>
+      console.error(`dispatchScheduledBooking(${bookingId}) failed:`, err)
+    );
+  }, ms);
+  dispatchTimers.set(bookingId, handle);
+}
+
+function clearDispatchTimer(bookingId) {
+  const handle = dispatchTimers.get(bookingId);
+  if (handle) {
+    clearTimeout(handle);
+    dispatchTimers.delete(bookingId);
+  }
+}
+
 function scheduleOfferTimeout(offerId, ms) {
   clearOfferTimeout(offerId);
   const handle = setTimeout(() => {
@@ -94,6 +123,7 @@ async function offerToOperator(booking, candidate, sequence) {
     bookingId: booking.id,
     offerId: offer.id,
     bookingType: booking.bookingType,
+    scheduledAt: booking.scheduledAt,
     sequence,
     dispatchDistanceKm: candidate.dispatchDistanceKm,
     price,
@@ -160,11 +190,14 @@ export async function createBookingWithFirstOffer({
   patient,
   paymentMethod,
   bookingType,
+  scheduledAt,
 }) {
   const booking = await prisma.booking.create({
     data: {
       userId,
       bookingType,
+      scheduledAt,
+      preferredOperatorId: scheduledAt ? chosenOperatorId : null,
       pickupName: pickup.name,
       pickupLat: pickup.lat,
       pickupLng: pickup.lng,
@@ -187,6 +220,18 @@ export async function createBookingWithFirstOffer({
   });
   await addTrackingEvent(booking.id, "Booking Requested");
 
+  // Scheduled: no offer now — the race starts DISPATCH_LEAD_MS before
+  // pickup (or immediately if we're already inside that window).
+  if (scheduledAt) {
+    await addTrackingEvent(booking.id, "Scheduled — Operator Search Starts Closer to Pickup");
+    const delay = new Date(scheduledAt).getTime() - DISPATCH_LEAD_MS - Date.now();
+    if (delay <= 0) {
+      return dispatchScheduledBooking(booking.id);
+    }
+    scheduleDispatchTimer(booking.id, delay);
+    return booking;
+  }
+
   const candidates = await findEligibleOperators({
     pickupLat: pickup.lat,
     pickupLng: pickup.lng,
@@ -207,6 +252,67 @@ export async function createBookingWithFirstOffer({
 
   const { booking: updated } = await offerToOperator(booking, nextBest, 1);
   return updated;
+}
+
+// Fires when a scheduled booking enters its dispatch window: run the same
+// preferred-operator-first offer race the immediate path uses. Guarded to be
+// a no-op if the booking was cancelled or already dispatched (timer + sweep
+// + boot recovery can all race harmlessly).
+export async function dispatchScheduledBooking(bookingId) {
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: { offers: true },
+  });
+  clearDispatchTimer(bookingId);
+  if (!booking || booking.status !== BOOKING_STATUS.REQUESTED || !booking.scheduledAt) return booking;
+  if (booking.offers.length > 0) return booking;
+
+  const candidates = await findEligibleOperators({
+    pickupLat: booking.pickupLat,
+    pickupLng: booking.pickupLng,
+    excludeOperatorIds: [],
+  });
+  const chosen = candidates.find((c) => c.operator.id === booking.preferredOperatorId);
+  const nextBest = chosen || candidates[0];
+
+  if (!nextBest) {
+    const expired = await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: BOOKING_STATUS.EXPIRED },
+    });
+    await addTrackingEvent(bookingId, "No Operators Left — Call 999");
+    emitToBooking(bookingId, "booking:status_changed", {
+      bookingId,
+      status: BOOKING_STATUS.EXPIRED,
+      reason: "no_operators_left",
+    });
+    return expired;
+  }
+
+  await addTrackingEvent(bookingId, "Scheduled Pickup Approaching — Finding Your Operator");
+  const { booking: updated } = await offerToOperator(booking, nextBest, 1);
+  return updated;
+}
+
+// Boot-time recovery for scheduled bookings that haven't been dispatched yet
+// (mirrors recoverPendingOffers): dispatch overdue ones now, re-arm timers
+// for the rest.
+export async function recoverScheduledDispatches() {
+  const pending = await prisma.booking.findMany({
+    where: { scheduledAt: { not: null }, status: BOOKING_STATUS.REQUESTED, offers: { none: {} } },
+  });
+  const now = Date.now();
+  for (const booking of pending) {
+    const delay = new Date(booking.scheduledAt).getTime() - DISPATCH_LEAD_MS - now;
+    if (delay <= 0) {
+      await dispatchScheduledBooking(booking.id).catch((err) =>
+        console.error(`recover dispatch(${booking.id}) failed:`, err)
+      );
+    } else {
+      scheduleDispatchTimer(booking.id, delay);
+    }
+  }
+  if (pending.length) console.log(`Recovered ${pending.length} scheduled dispatch(es)`);
 }
 
 async function loadPendingOffer(offerId) {
@@ -301,6 +407,8 @@ export async function cancelBooking(bookingId, userId) {
       data: { status: OFFER_STATUS.CANCELLED, respondedAt: new Date() },
     });
   }
+  // Scheduled booking cancelled before dispatch — stop the pending dispatch.
+  clearDispatchTimer(bookingId);
 
   const updated = await prisma.booking.update({
     where: { id: bookingId },
@@ -366,6 +474,21 @@ export function startOfferSweep() {
     });
     for (const offer of expired) {
       await expireOffer(offer.id).catch((err) => console.error(`sweep expireOffer(${offer.id}) failed:`, err));
+    }
+
+    // Scheduled bookings due for dispatch whose timer was lost (and the
+    // re-arm path for >24.8-day timers setTimeout can't represent).
+    const due = await prisma.booking.findMany({
+      where: {
+        status: BOOKING_STATUS.REQUESTED,
+        scheduledAt: { not: null, lte: new Date(Date.now() + DISPATCH_LEAD_MS) },
+        offers: { none: {} },
+      },
+    });
+    for (const booking of due) {
+      await dispatchScheduledBooking(booking.id).catch((err) =>
+        console.error(`sweep dispatch(${booking.id}) failed:`, err)
+      );
     }
   }, config.offerSweepIntervalSeconds * 1000);
 }
