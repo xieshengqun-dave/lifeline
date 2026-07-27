@@ -127,6 +127,12 @@ export default function IncomingRequestsScreen({ navigation }) {
                   <View style={r.conditionCard}>
                     <Text style={r.route}>{offer.pickup.name} → {offer.destination.name}</Text>
                     <Text style={r.distance}>{offer.dispatchDistanceKm.toFixed(1)} km away</Text>
+                    {offer.scheduledAt && (
+                      <Text style={r.scheduledT}>
+                        Scheduled pickup: {new Date(offer.scheduledAt).toLocaleDateString()}{" "}
+                        {new Date(offer.scheduledAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    )}
                     <View style={r.patientRow}>
                       <Text style={r.patientT}>
                         Age {offer.patientSummary.age ?? "—"} · {offer.patientSummary.consciousLevel ?? "—"}
@@ -183,6 +189,7 @@ const r = StyleSheet.create({
   newPillT: { ...type.caption, fontSize: 10, color: "#7fffdc" },
   transferPill: { backgroundColor: "rgba(255,255,255,0.16)", borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5, marginLeft: 8, marginRight: "auto" },
   transferPillT: { ...type.caption, fontSize: 10, color: "#fff" },
+  scheduledT: { ...type.bodySemibold, fontSize: 12, color: "#7fffdc", marginTop: 4 },
   countdown: { ...type.statNumber, fontSize: 22, color: "#fff" },
   progressTrack: { height: 5, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.14)", marginBottom: 16, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: "#2ba7a0", borderRadius: 3 },

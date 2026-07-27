@@ -164,4 +164,18 @@ router.post(
   })
 );
 
+const pushTokenSchema = z.object({
+  pushToken: z.string().max(200).regex(/^Expo(nent)?PushToken\[.+\]$/).nullable(),
+});
+
+router.post(
+  "/push-token",
+  requireOperatorAuth,
+  validate(pushTokenSchema),
+  asyncHandler(async (req, res) => {
+    await prisma.operator.update({ where: { id: req.operatorId }, data: { pushToken: req.body.pushToken } });
+    res.json({ ok: true });
+  })
+);
+
 export default router;

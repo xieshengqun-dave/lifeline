@@ -14,7 +14,8 @@ import {
   PlusJakartaSans_800ExtraBold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 
-import { operatorLogin, getOperatorRequests, setAuthToken, setUnauthorizedHandler } from "./src/api/client";
+import { operatorLogin, getOperatorRequests, setAuthToken, setUnauthorizedHandler, savePushToken } from "./src/api/client";
+import { registerForPushAsync } from "./src/lib/notifications";
 import { subscribeToOperatorEvents, disconnectSocket } from "./src/api/socket";
 import { C } from "./src/theme/theme";
 
@@ -102,6 +103,16 @@ export default function App() {
       setAuthLoading(false);
     })();
   }, []);
+
+  // Register for remote push once authed — this is what makes an incoming
+  // offer reach a dispatcher whose app is closed (no-ops in Expo Go).
+  React.useEffect(() => {
+    if (!token) return;
+    (async () => {
+      const pushToken = await registerForPushAsync();
+      if (pushToken) await savePushToken(pushToken).catch(() => {});
+    })();
+  }, [token]);
 
   // Populate + keep pendingOffers in sync once authed. A missed offer:created
   // during a disconnect has no guaranteed follow-up event (unlike the patient

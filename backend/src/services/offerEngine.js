@@ -5,6 +5,7 @@ import { findEligibleOperators } from "./matching.js";
 import { computeFare, computeEtaMinutes } from "./pricing.js";
 import { getPlatformFeeSetting } from "./settings.js";
 import { BOOKING_STATUS, OFFER_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
+import { pushToUser, pushToOperator } from "./push.js";
 import { HttpError } from "../middleware/errorHandler.js";
 
 // In-memory timers, keyed by BookingOffer.id. BookingOffer.expiresAt is the
@@ -119,6 +120,15 @@ async function offerToOperator(booking, candidate, sequence) {
     expiresAt,
   });
 
+  // The socket only reaches an open app — the push reaches a closed one.
+  // Critical for scheduled dispatches (fires ~45 min before pickup) and for
+  // any operator who isn't staring at Incoming Requests.
+  pushToOperator(candidate.operator.id, {
+    title: booking.scheduledAt ? "Scheduled transport request" : "New ambulance request",
+    body: `${booking.pickupName} → ${booking.destinationName} · RM ${price.subtotal.toFixed(0)} · ${config.offerTimeoutSeconds}s to accept`,
+    data: { kind: "offer", bookingId: booking.id, offerId: offer.id },
+  });
+
   emitToOperator(candidate.operator.id, "offer:created", {
     bookingId: booking.id,
     offerId: offer.id,
@@ -170,11 +180,24 @@ export async function advanceToNextOperator(bookingId, reason) {
       status: BOOKING_STATUS.EXPIRED,
       reason: "no_operators_left",
     });
+    notifyScheduledExpiry(expired);
     return expired;
   }
 
   const { booking: updated } = await offerToOperator(booking, candidates[0], triedOperatorIds.length + 1);
   return updated;
+}
+
+// A scheduled booking that dies (no operators / everyone declined) fails
+// ~45 min before pickup with nobody looking at the app — this push is the
+// only way the patient finds out in time to call 999 or rearrange.
+function notifyScheduledExpiry(booking) {
+  if (!booking.scheduledAt) return;
+  pushToUser(booking.userId, {
+    title: "Could not find an ambulance",
+    body: "No operator accepted your scheduled transport. Please call 999 if urgent, or open the app to book again.",
+    data: { kind: "booking_expired", bookingId: booking.id },
+  });
 }
 
 // Creates a booking and offers the patient's chosen operator first (falling
@@ -286,6 +309,7 @@ export async function dispatchScheduledBooking(bookingId) {
       status: BOOKING_STATUS.EXPIRED,
       reason: "no_operators_left",
     });
+    notifyScheduledExpiry(expired);
     return expired;
   }
 
@@ -337,6 +361,16 @@ export async function acceptOffer(offerId, operatorId) {
   });
   await addTrackingEvent(booking.id, "Accepted");
   emitToBooking(booking.id, "booking:status_changed", { bookingId: booking.id, status: BOOKING_STATUS.ACCEPTED });
+  // Scheduled bookings: the patient isn't watching a Waiting screen when the
+  // dispatch resolves — tell them their ride is locked in.
+  if (booking.scheduledAt) {
+    const when = new Date(booking.scheduledAt);
+    pushToUser(booking.userId, {
+      title: "Ambulance confirmed",
+      body: `Your scheduled transport is confirmed for ${when.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}. Track it in the Trips tab.`,
+      data: { kind: "booking_accepted", bookingId: booking.id },
+    });
+  }
   return booking;
 }
 

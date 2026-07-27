@@ -25,6 +25,7 @@ model User {
   name            String?
   phone           String?   @unique
   email           String?   @unique
+  pushToken       String?   // Expo push token — set by the app after permission
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -48,6 +49,7 @@ model Operator {
   baseFare        Float
   perKmRate       Float
   fleetSummary    String? // e.g. "2 ALS, 1 BLS" — quick-display rollup
+  pushToken       String? // Expo push token — set by the operator app after permission
   vettingStatus   String   @default("pending") // pending | approved | suspended
   online          Boolean  @default(false)
   ratingAvg       Float? // recomputed on each new Rating write, null until the first

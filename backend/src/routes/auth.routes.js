@@ -100,6 +100,22 @@ router.post(
   })
 );
 
+const pushTokenSchema = z.object({
+  // Expo push token, e.g. ExponentPushToken[xxxx]; null clears it (sign-out /
+  // permission revoked).
+  pushToken: z.string().max(200).regex(/^Expo(nent)?PushToken\[.+\]$/).nullable(),
+});
+
+router.post(
+  "/push-token",
+  requirePatientAuth,
+  validate(pushTokenSchema),
+  asyncHandler(async (req, res) => {
+    await prisma.user.update({ where: { id: req.userId }, data: { pushToken: req.body.pushToken } });
+    res.json({ ok: true });
+  })
+);
+
 router.post(
   "/operator/login",
   validate(operatorLoginSchema),

@@ -204,10 +204,25 @@ bug came out of it:
     Trips tab shows a "Scheduled" pill + pickup time and **trip rows are now
     tappable** (open the tracking timeline via BookingContext). Operators see the
     scheduled pickup time on request cards + active trip.
-  - **Known gap, flagged**: no push notifications — if a scheduled booking's dispatch
-    finds no operator (or all decline) 45 min before pickup, the patient only learns
-    by opening the Trips tab. Push notifications are the missing piece before
-    scheduling is pilot-trustworthy.
+  - **Push notifications — built later this same session** (closing the gap flagged
+    below at the time): `User.pushToken`/`Operator.pushToken` + registration
+    endpoints (`POST /api/auth/push-token`, `POST /api/operator/push-token`, expo
+    token format zod-validated, null clears); `services/push.js` sends via Expo's
+    push HTTP API (no server secret needed), strictly fire-and-forget — a failing
+    push is loudly logged but can never break the booking path (verified: fake
+    token → Expo returned DeviceNotRegistered, logged, booking still offered).
+    Pushes fire on: every offer to an operator (works even when their app is
+    closed — critical for the 45-min-before scheduled dispatch), scheduled booking
+    accepted (patient), scheduled booking expired/no-operators (patient — the
+    call-999-in-time push). Both apps register on sign-in via
+    `src/lib/notifications.js` (permission prompt, Android channel, graceful no-op
+    on denial/simulator).
+    **Remaining human steps for actual delivery (code is done, delivery is not):**
+    (1) **Expo Go (SDK 53+) cannot receive remote pushes at all** — a dev/preview
+    EAS build is required to see them; registration quietly no-ops in Expo Go.
+    (2) **Android**: create a Firebase project + upload the FCM V1 service-account
+    key via `eas credentials` (account `ubato`) before Android delivery works.
+    (3) **iOS**: needs APNs → the already-flagged Apple Developer account.
 - **Next:** the real two-phone demo from Klang (patient + operator app, accept within
   60s, advance statuses, rating lands in Trips) — now including a scheduled booking
   (schedule ~20 min out → dispatches immediately → operator sees scheduled time).

@@ -14,7 +14,8 @@ import {
   PlusJakartaSans_800ExtraBold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 
-import { authGuest, setAuthToken, setUnauthorizedHandler } from "./src/api/client";
+import { authGuest, setAuthToken, setUnauthorizedHandler, savePushToken } from "./src/api/client";
+import { registerForPushAsync } from "./src/lib/notifications";
 import { disconnectSocket } from "./src/api/socket";
 import { C } from "./src/theme/theme";
 
@@ -124,6 +125,16 @@ export default function App() {
       setAuthLoading(false);
     })();
   }, []);
+
+  // Register for remote push once signed in (no-ops in Expo Go / on denial).
+  // Failures never block the app — push is additive, not load-bearing.
+  React.useEffect(() => {
+    if (!token) return;
+    (async () => {
+      const pushToken = await registerForPushAsync();
+      if (pushToken) await savePushToken(pushToken).catch(() => {});
+    })();
+  }, [token]);
 
   const ready = !authLoading && fontsLoaded;
 

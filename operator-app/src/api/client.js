@@ -56,6 +56,7 @@ export const declineOffer = (offerId) => req(`/api/operator/offers/${offerId}/de
 export const setAvailability = (online) =>
   req("/api/operator/availability", { method: "POST", body: JSON.stringify({ online }) });
 export const getOperatorBookings = () => req("/api/operator/bookings");
+export const savePushToken = (pushToken) => req("/api/operator/push-token", { method: "POST", body: JSON.stringify({ pushToken }) });
 export const getOperatorBooking = (id) => req(`/api/operator/bookings/${id}`);
 
 // ── Bookings (operator-authed) ──

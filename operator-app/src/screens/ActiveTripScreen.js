@@ -116,6 +116,12 @@ export default function ActiveTripScreen({ route, navigation }) {
             RM {booking.subtotal.toFixed(2)} · {booking.distanceKm.toFixed(1)} km
             {booking.bookingType === "transfer" ? " · Non-emergency transfer" : ""}
           </Text>
+          {booking.scheduledAt && (
+            <Text style={[t.sub, { color: C.tealDeep }]}>
+              Scheduled pickup: {new Date(booking.scheduledAt).toLocaleDateString()}{" "}
+              {new Date(booking.scheduledAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+            </Text>
+          )}
         </View>
 
         <Text style={t.sectOutside}>AMBULANCE & CREW</Text>
