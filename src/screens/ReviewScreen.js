@@ -51,6 +51,7 @@ export default function ReviewScreen({ navigation }) {
         destination: toApiLocation(booking.to),
         patient: toApiPatient(booking),
         paymentMethod: booking.payMethod,
+        bookingType: booking.bookingType || "emergency",
       });
       update({
         bookingId: res.id,
@@ -73,6 +74,9 @@ export default function ReviewScreen({ navigation }) {
           <Text style={rv.sect}>TRIP DETAILS</Text>
           <Text style={rv.tv}>{booking.from?.name || "Pickup"}</Text>
           <Text style={rv.tv}>→ {booking.to?.name || "Destination"}</Text>
+          {booking.bookingType === "transfer" && (
+            <Text style={rv.body}>Non-emergency patient transfer</Text>
+          )}
 
           <Text style={[rv.sect, { marginTop: 14 }]}>AMBULANCE</Text>
           <Text style={rv.tv}>{op?.name} · {op?.fleetSummary}</Text>

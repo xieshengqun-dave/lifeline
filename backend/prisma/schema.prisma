@@ -140,6 +140,10 @@ model Booking {
   paymentStatus   String  @default("pending") // pending | paid | failed
   paymentProvider String? // null until a real provider is integrated — see services/payment.js
 
+  // What kind of trip this is — emergency (default) | transfer
+  // (non-emergency inter-facility / planned medical transport).
+  bookingType String @default("emergency")
+
   // Lifecycle — LOCKED list per CLAUDE.md
   // requested | offered | accepted | enroute | arrived | onboard | completed
   // | cancelled | declined | expired

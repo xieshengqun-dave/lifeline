@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius, colors } from "../theme/tokens";
-import { AuthContext } from "../../App";
+import { AuthContext, BookingContext } from "../../App";
 import { getOverviewStats } from "../api/client";
 import { HOSPITALS } from "../lib/hospitals";
 import Card from "../components/ui/Card";
@@ -21,8 +21,16 @@ function fmtResponse(secs) {
 // an earlier draft built before that spec existed.
 export default function WelcomeScreen({ navigation }) {
   const { user, signOut } = React.useContext(AuthContext);
+  const { update } = React.useContext(BookingContext);
   const greeting = user?.name ? `Hello, ${user.name}` : "Hello there";
   const initial = (user?.name?.[0] || "G").toUpperCase();
+
+  // Both entry points share the same flow — the type just tags the booking
+  // (operators see a TRANSFER badge on non-emergency requests).
+  function startRequest(bookingType) {
+    update({ bookingType });
+    navigation.navigate("Location");
+  }
 
   // Real marketplace numbers (replaces the design mock's hardcoded values).
   // "—" until loaded / when the backend has no data — never a made-up figure.
@@ -80,7 +88,7 @@ export default function WelcomeScreen({ navigation }) {
         <LinearGradient colors={[colors.tealBright, C.teal, C.tealDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
           <Text style={s.heroTitle}>Request Ambulance</Text>
           <Text style={s.heroSub}>Emergency or immediate medical transport</Text>
-          <TouchableOpacity style={s.heroBtn} activeOpacity={0.85} onPress={() => navigation.navigate("Location")}>
+          <TouchableOpacity style={s.heroBtn} activeOpacity={0.85} onPress={() => startRequest("emergency")}>
             <Text style={s.heroBtnT}>Start request</Text>
             <Ionicons name="arrow-forward" size={15} color={C.tealDeep} />
           </TouchableOpacity>
@@ -97,13 +105,15 @@ export default function WelcomeScreen({ navigation }) {
             <Text style={s.miniT}>Schedule Transport</Text>
             <Text style={s.miniS}>Book for a later time</Text>
           </Card>
-          <Card style={s.mini}>
-            <View style={s.miniIconTile}>
-              <Ionicons name="person-add-outline" size={18} color={C.tealDeep} />
-            </View>
-            <Text style={s.miniT}>Patient Transfer</Text>
-            <Text style={s.miniS}>Non-emergency medical transfer</Text>
-          </Card>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.85} onPress={() => startRequest("transfer")}>
+            <Card style={[s.mini, { flex: undefined }]}>
+              <View style={s.miniIconTile}>
+                <Ionicons name="person-add-outline" size={18} color={C.tealDeep} />
+              </View>
+              <Text style={s.miniT}>Patient Transfer</Text>
+              <Text style={s.miniS}>Non-emergency medical transfer</Text>
+            </Card>
+          </TouchableOpacity>
         </View>
 
         <Text style={s.sect}>LIVE OVERVIEW</Text>

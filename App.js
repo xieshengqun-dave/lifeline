@@ -48,6 +48,7 @@ export const BookingContext = React.createContext(null);
 export const AuthContext = React.createContext(null);
 
 const initialBooking = {
+  bookingType: "emergency", // emergency | transfer — set by the Home entry point
   from: null, to: null, distanceKm: 0,
   age: "45", gender: "Male", cond: "Fully Conscious",
   oxy: "Yes", flow: "<5L", iv: "No", medication: "",

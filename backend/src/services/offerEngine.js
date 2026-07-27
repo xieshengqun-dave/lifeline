@@ -93,6 +93,7 @@ async function offerToOperator(booking, candidate, sequence) {
   emitToOperator(candidate.operator.id, "offer:created", {
     bookingId: booking.id,
     offerId: offer.id,
+    bookingType: booking.bookingType,
     sequence,
     dispatchDistanceKm: candidate.dispatchDistanceKm,
     price,
@@ -158,10 +159,12 @@ export async function createBookingWithFirstOffer({
   distanceKm,
   patient,
   paymentMethod,
+  bookingType,
 }) {
   const booking = await prisma.booking.create({
     data: {
       userId,
+      bookingType,
       pickupName: pickup.name,
       pickupLat: pickup.lat,
       pickupLng: pickup.lng,

@@ -52,6 +52,7 @@ const createBookingSchema = z.object({
   destination: locationSchema,
   patient: patientSchema,
   paymentMethod: z.string().min(1),
+  bookingType: z.enum(["emergency", "transfer"]).default("emergency"),
 });
 
 const statusSchema = z.object({
@@ -113,7 +114,7 @@ router.post(
   requirePatientAuth,
   validate(createBookingSchema),
   asyncHandler(async (req, res) => {
-    const { operatorId, pickup, destination, patient, paymentMethod } = req.body;
+    const { operatorId, pickup, destination, patient, paymentMethod, bookingType } = req.body;
     const distanceKm = haversineKm(pickup.lat, pickup.lng, destination.lat, destination.lng);
 
     const booking = await createBookingWithFirstOffer({
@@ -124,6 +125,7 @@ router.post(
       distanceKm,
       patient,
       paymentMethod,
+      bookingType,
     });
 
     const currentOffer = await prisma.bookingOffer.findFirst({
@@ -134,6 +136,7 @@ router.post(
     res.status(201).json({
       id: booking.id,
       status: booking.status,
+      bookingType: booking.bookingType,
       operatorId: booking.operatorId,
       distanceKm: booking.distanceKm,
       subtotal: booking.subtotal,
@@ -178,6 +181,7 @@ router.get(
       select: {
         id: true,
         status: true,
+        bookingType: true,
         createdAt: true,
         pickupName: true,
         destinationName: true,

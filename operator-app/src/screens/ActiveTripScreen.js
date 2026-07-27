@@ -112,7 +112,10 @@ export default function ActiveTripScreen({ route, navigation }) {
         <View style={t.card}>
           <Text style={t.sect}>TRIP</Text>
           <Text style={t.tv}>{booking.pickupName} → {booking.destinationName}</Text>
-          <Text style={t.sub}>RM {booking.subtotal.toFixed(2)} · {booking.distanceKm.toFixed(1)} km</Text>
+          <Text style={t.sub}>
+            RM {booking.subtotal.toFixed(2)} · {booking.distanceKm.toFixed(1)} km
+            {booking.bookingType === "transfer" ? " · Non-emergency transfer" : ""}
+          </Text>
         </View>
 
         <Text style={t.sectOutside}>AMBULANCE & CREW</Text>

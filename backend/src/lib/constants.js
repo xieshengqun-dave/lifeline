@@ -45,6 +45,11 @@ export const PAYMENT_STATUS = Object.freeze({
   FAILED: "failed",
 });
 
+export const BOOKING_TYPE = Object.freeze({
+  EMERGENCY: "emergency",
+  TRANSFER: "transfer",
+});
+
 export const AMBULANCE_TYPE = Object.freeze({
   ALS: "ALS",
   BLS: "BLS",
