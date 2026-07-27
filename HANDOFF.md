@@ -127,6 +127,61 @@ unverified mode works).
 
 ---
 
+### 2026-07-27 — Grab-style map, real Trips tab, Klang operator, multi-crew, prod deploy hardening
+Live phone-testing session with the user (patient app on their phone from home in
+**Klang / Bandar Parklands**) — several real features and one production-grade deploy
+bug came out of it:
+
+- **Grab-style operator selection** (user request): `AmbulancesScreen` rebuilt as a
+  full-screen map — pickup dot + one price-bubble pin per operator, synced two-way with
+  a swipeable bottom card carousel. Backend quote response now includes each operator's
+  `baseLat`/`baseLng` (pins are omitted gracefully if a stale backend doesn't send
+  them). Pins are **static base locations** per the locked fixed-base rule — flagged to
+  the user that Grab-style *moving* vehicles would need operator live GPS (declined for
+  now). User confirmed the map works on a real device.
+- **Real Trips tab**: new `GET /api/bookings` (patient-scoped, newest-first, take 50,
+  lean safe-field select) + `TripsScreen` rewritten from placeholder to a real history
+  list (status pills per the locked state machine, pull-to-refresh, refetch-on-focus).
+  Activity tab / Schedule Transport / Patient Transfer cards remain honest placeholders
+  (user chose Trips first); **Home's "Live Overview" stats are still hardcoded fakes —
+  flagged, fix or remove before any operator demo.**
+- **"No units available" from the user's home diagnosed as correct behavior**: all 5
+  seeded operators were PJ/KL-centred (traced the phone's real quote via a temp debug
+  log — pickup at Bandar Parklands, south Klang). Seeded a 6th operator
+  **Klang Response Ambulance** (`ops@klangresponse.example` / `operator123`, base at
+  Klang town, 10km radius, 2 ambulances, 2 crew) — verified the user's exact pickup
+  then matches (8.5km). Also learned: offers only "exist" if an operator app is open to
+  accept — every earlier attempt timed out through the cascade because nobody was
+  logged in. Operator dev server (:8082) now runs alongside patient (:8081).
+- **Crew assignment: radio → checkbox team** (user decision: "operator decides").
+  Schema migration `crew_many_to_many` replaces `Booking.crewId` with an implicit m2m
+  (`_BookingToCrew`), hand-ordered so existing assignments were preserved (3 rows
+  copied). Assign endpoint takes `crewIds[]` (validates each is the operator's + active,
+  `set`-replaces the team). Operator ActiveTrip uses checkboxes (ambulance + ≥1 crew
+  required; call button prefers the paramedic). Patient tracking shows lead crew
+  member + "+N crew". No role-composition rule enforced (deliberately — operator's
+  call; add to the decide-with-operators list).
+- **iOS testing enabled**: map screens were hard-set to `PROVIDER_GOOGLE`, which Expo
+  Go on iOS doesn't support — now Google on Android / Apple Maps on iOS. Installable
+  iOS builds still blocked on the Apple Developer account (human-decision item).
+- **Real deploy gap found & fixed**: Railway runs plain `npm start` — **it never ran
+  prisma migrations on deploy**, so today's schema change would have 500'd production.
+  Added `"prestart": "npx prisma migrate deploy"`. Verified live: new build serving,
+  migration applied (crew-including endpoint returns 200 on prod).
+- Also: EAS CLI on this Mac was logged in as the wrong account (`ajx-team`) and the
+  July-9 APK artifact links have expired server-side (records exist, files 404) —
+  rebuild via `eas build --platform android --profile preview` after `eas login` as
+  `ubato` when fresh APKs are needed. Git pushes now work via `gh auth switch --user
+  xieshengqun-dave` + `gh auth setup-git` (the Mac keychain's default credential is a
+  different GitHub account, `xieshengqun`).
+- Verified at every step: backend suite 22/22 (one known-class socket-hang-up flake,
+  clean on rerun), `expo export` clean both apps, live end-to-end API walkthrough of
+  book → accept → multi-crew assign → patient sees team → cancel.
+- **Next:** the real two-phone demo from Klang (patient + operator app, accept within
+  60s, advance statuses, rating lands in Trips). Then: production DB still only has
+  the original 5 operators (dev-only seed for Klang) — reseed prod if demoing against
+  Railway.
+
 ### 2026-07-08 (cont'd) — Real-browser bug hunt, updated design handoff, Home screen rebuild
 The user started actually testing the redesign in a real browser/device — the standing
 "bundling clean isn't proof of correct rendering" caveat immediately paid off, catching
