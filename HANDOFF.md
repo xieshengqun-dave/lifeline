@@ -229,6 +229,52 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-07-30 — Push delivery wired (FCM), APKs rebuilt, patient web app (PWA) built
+- **Firebase/FCM done by the user**: project `lifeline-4ef3c`, both Android apps
+  registered, FCM V1 service-account key uploaded to both EAS projects. Combined
+  `google-services.json` committed in each app dir; `android.googleServicesFile`
+  wired in both app.jsons. Fresh preview APKs built (links in CREDENTIALS.md).
+  EAS auth on this Mac: user has TWO expo accounts (`ubato` owns these projects,
+  `ajx-team` is unrelated work) — a `ubato` access token lives in gitignored
+  `.eas-token`; run builds with `EXPO_TOKEN=$(cat .eas-token) eas build ...` so the
+  global CLI login (whichever account) is never touched.
+- **Standalone-APK crash found by the user, fixed**: tapping Request Ambulance /
+  Patient Transfer crashed the APK — MapView with PROVIDER_GOOGLE hard-crashes a
+  standalone Android build when `android.config.googleMaps.apiKey` is absent
+  (Expo Go masks this with Expo's own key; every earlier phone test was Expo Go).
+  The map module now degrades to a placeholder on standalone Android until the key
+  exists. **Human step for the real map: Google Cloud (same project) → enable
+  billing + "Maps SDK for Android" (+ "Maps JavaScript API"/"Geocoding API" for
+  web) → key into app.json android.config.googleMaps.apiKey → rebuild.**
+- **Patient web app (PWA) built** (user decision: iOS users get the PWA; iOS native
+  stays blocked on the Apple Developer account):
+  - Expo web build of the same codebase. Platform-split `src/components/map/`
+    (native = react-native-maps; web = hand-rolled Google Maps JS wrapper —
+    MapView/Marker/Polyline surface only; keyless → graceful placeholder, screens
+    stay fully usable). `src/lib/storage.js` (SecureStore ↔ localStorage),
+    `src/lib/geocode.js` (native expo-location ↔ web Google-or-Nominatim),
+    datetime-local input on Schedule, push registration no-ops on web (iOS Web
+    Push/VAPID = deliberate phase 2).
+  - PWA packaging: public/ manifest+icons, postbuild script injects apple
+    add-to-home-screen meta tags (Metro web has no HTML hook without expo-router),
+    root netlify.toml (build with `-c` — **Metro caches config-derived values;
+    without -c a stale API_BASE_URL ships silently**, found the hard way).
+  - **Browser-verified end-to-end against the local backend**: guest sign-in →
+    real Home stats → pickup via Nominatim address search (real Klang result) →
+    hospital destination → live quote (Klang Response, RM192) → book → Waiting
+    with animated countdown ring → operator accept via API → **socket flipped the
+    page live** to the receipt. Booking pipeline fully works on web.
+  - **Not yet deployed**: create the Netlify site (user: Netlify → Add new site →
+    import GitHub repo, root base — netlify.toml drives the build; set
+    API_BASE_URL + optionally EXPO_PUBLIC_GOOGLE_MAPS_API_KEY per the comments in
+    netlify.toml). Real-iPhone Safari pass still needed after deploy.
+- Prod also gained **Klang Response Ambulance** (created+approved via admin API —
+  no fleet yet, assignment picker will be empty on prod until fleet rows exist).
+- **Next:** (1) install the fixed patient APK + run the Android push test
+  (operator app closed → book → "New ambulance request" notification);
+  (2) create the Netlify site for the PWA and test on an iPhone via Safari;
+  (3) Google Maps key when ready for real maps in APK + web.
+
 ### 2026-07-08 (cont'd) — Real-browser bug hunt, updated design handoff, Home screen rebuild
 The user started actually testing the redesign in a real browser/device — the standing
 "bundling clean isn't proof of correct rendering" caveat immediately paid off, catching
