@@ -21,6 +21,12 @@ function fmt(d) {
     " · " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
+// Local-time "YYYY-MM-DDTHH:mm" for <input type="datetime-local"> (web only).
+function toLocalInputValue(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export default function ScheduleScreen({ navigation }) {
   const { update } = React.useContext(BookingContext);
   const [when, setWhen] = React.useState(() => new Date(Date.now() + 60 * 60 * 1000));
@@ -48,7 +54,20 @@ export default function ScheduleScreen({ navigation }) {
         <Card style={{ marginBottom: spacing.cardGap }}>
           <Text style={s.sect}>PICKUP TIME</Text>
 
-          {Platform.OS === "ios" ? (
+          {Platform.OS === "web" ? (
+            // Browser-native picker — DateTimePicker has no web support.
+            <input
+              type="datetime-local"
+              value={toLocalInputValue(when)}
+              min={toLocalInputValue(new Date(Date.now() + MIN_LEAD_MS))}
+              max={toLocalInputValue(new Date(Date.now() + MAX_AHEAD_MS))}
+              onChange={(e) => { if (e.target.value) setWhen(new Date(e.target.value)); }}
+              style={{
+                fontSize: 16, padding: 12, border: "1.5px solid #dde5e7", borderRadius: 10,
+                width: "100%", boxSizing: "border-box", fontFamily: "inherit", color: "#12222b",
+              }}
+            />
+          ) : Platform.OS === "ios" ? (
             <DateTimePicker
               value={when}
               mode="datetime"

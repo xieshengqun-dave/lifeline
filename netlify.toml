@@ -1,0 +1,21 @@
+# Patient web app (PWA) — deploys the Expo web export of the patient app.
+# (The admin dashboard is a SEPARATE Netlify site with base = admin/ and its
+# own admin/netlify.toml — this file does not affect it.)
+#
+# Environment variables to set in the Netlify UI for this site:
+#   API_BASE_URL                      = https://lifeline-production-d777.up.railway.app
+#   EXPO_PUBLIC_GOOGLE_MAPS_API_KEY   = <Google Maps JS + Geocoding key — optional;
+#                                        without it the app works with a map placeholder
+#                                        and OpenStreetMap address search>
+
+[build]
+  # -c clears Metro's cache: config-derived values (API_BASE_URL) are baked
+  # into the bundle and a cached bundle can silently keep a stale one.
+  command = "npm ci && npx expo export --platform web -c && node scripts/postbuild-web.js"
+  publish = "dist"
+
+# SPA fallback — React Navigation handles routes client-side.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

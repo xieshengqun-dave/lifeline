@@ -13,17 +13,22 @@ import Constants from "expo-constants";
 //   iOS = APNs (Apple Developer account — human step).
 
 // Show notifications as banners even while the app is foregrounded.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// (Skipped on web — Expo push is native-only; web push would be a separate
+// VAPID/service-worker channel, deliberately not built yet.)
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export async function registerForPushAsync() {
   try {
+    if (Platform.OS === "web") return null; // Expo push is native-only
     if (!Device.isDevice) return null; // simulators can't receive push
 
     if (Platform.OS === "android") {

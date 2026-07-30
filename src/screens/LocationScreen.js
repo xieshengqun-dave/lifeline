@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Platform } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-
-// Google provider is Android-only inside Expo Go; iOS falls back to Apple Maps.
-const MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
+import MapView, { Marker, Polyline, MAP_PROVIDER } from "../components/map";
 import * as Location from "expo-location";
+import { geocodeAsync, reverseGeocodeAsync } from "../lib/geocode";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius, shadows } from "../theme/tokens";
@@ -44,7 +42,7 @@ export default function LocationScreen({ navigation }) {
       const here = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
       let name = "Current location";
       try {
-        const geo = await Location.reverseGeocodeAsync(here);
+        const geo = await reverseGeocodeAsync(here);
         if (geo[0]) name = "Current location · " + [geo[0].name, geo[0].district || geo[0].city].filter(Boolean).join(", ");
       } catch (e) {}
       update({ from: { ...here, name } });

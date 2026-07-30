@@ -1,11 +1,7 @@
 import React from "react";
-import { View, Text, ScrollView, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Dimensions, Platform } from "react-native";
+import { View, Text, ScrollView, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
-
-// Google provider is Android-only inside Expo Go; iOS falls back to Apple
-// Maps there. A future dev build with a Google Maps key can drop this split.
-const MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
+import MapView, { Marker, MAP_PROVIDER } from "../components/map";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { C } from "../theme/theme";

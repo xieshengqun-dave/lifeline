@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
+import { geocodeAsync, reverseGeocodeAsync } from "../lib/geocode";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius } from "../theme/tokens";
@@ -48,7 +49,7 @@ export default function AddressPickerScreen({ navigation }) {
     setError(null);
     setResults([]);
     try {
-      const matches = await Location.geocodeAsync(q);
+      const matches = await geocodeAsync(q);
       if (!matches.length) {
         setError("No matches found for that address.");
         return;
@@ -61,7 +62,7 @@ export default function AddressPickerScreen({ navigation }) {
         matches.slice(0, 5).map(async (m) => {
           let area = null;
           try {
-            const rev = await Location.reverseGeocodeAsync({ latitude: m.latitude, longitude: m.longitude });
+            const rev = await reverseGeocodeAsync({ latitude: m.latitude, longitude: m.longitude });
             if (rev[0]) area = [rev[0].street, rev[0].district || rev[0].city].filter(Boolean).join(", ");
           } catch {}
           return { latitude: m.latitude, longitude: m.longitude, name: q, area };
@@ -84,7 +85,7 @@ export default function AddressPickerScreen({ navigation }) {
       const here = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
       let name = "Current location";
       try {
-        const geo = await Location.reverseGeocodeAsync(here);
+        const geo = await reverseGeocodeAsync(here);
         if (geo[0]) name = "Current location · " + [geo[0].name, geo[0].district || geo[0].city].filter(Boolean).join(", ");
       } catch {}
       selectLocation({ ...here, name });

@@ -1,0 +1,14 @@
+{
+  "name": "Lifeline — Ambulance Booking",
+  "short_name": "Lifeline",
+  "description": "Request an ambulance from nearby operators. Every second counts.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f8f8",
+  "theme_color": "#0E8C8C",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
