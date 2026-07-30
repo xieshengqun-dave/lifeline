@@ -12,3 +12,4 @@ backend/.env.test
 backend/node_modules/
 *.tgz
 CREDENTIALS.md
+.eas-token
