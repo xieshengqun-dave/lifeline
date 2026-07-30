@@ -27,7 +27,9 @@
   # above is baked into the web bundle intentionally. Real secrets stay out
   # of this repo entirely (Railway/EAS only).
   SECRETS_SCAN_OMIT_PATHS = "google-services.json,operator-app/google-services.json"
-  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyBMWqCanQcDlsXjbNwVZYdBqRNFGy9su8M"
+  # ...both the web maps key and the Android maps key (app.json) — public
+  # client keys, package/referer-restricted server-side.
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyBMWqCanQcDlsXjbNwVZYdBqRNFGy9su8M,AIzaSyCHF-EvDfFePlJLjOL7laeLLJlEALZxUWQ"
 
 # SPA fallback — React Navigation handles routes client-side.
 [[redirects]]
