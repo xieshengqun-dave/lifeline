@@ -32,9 +32,15 @@ function loadGoogleMaps() {
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(KEY)}&loading=async`;
     s.async = true;
     s.onload = () => {
-      // With loading=async the namespace may attach a tick later.
-      const poll = () =>
-        window.google?.maps ? resolve(window.google.maps) : setTimeout(poll, 25);
+      // loading=async means google.maps.Map & friends DON'T exist until the
+      // libraries are explicitly imported — constructing before that throws.
+      const poll = () => {
+        if (!window.google?.maps?.importLibrary) return setTimeout(poll, 25);
+        Promise.all([
+          window.google.maps.importLibrary("maps"),
+          window.google.maps.importLibrary("marker"),
+        ]).then(() => resolve(window.google.maps), reject);
+      };
       poll();
     };
     s.onerror = () => {
