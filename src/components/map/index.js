@@ -18,7 +18,9 @@ export const MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefi
 // exists (human step — see CREDENTIALS.md), standalone Android renders the
 // same graceful placeholder the keyless web build uses.
 const isExpoGo = Constants.executionEnvironment === "storeClient";
-const hasAndroidKey = !!Constants.expoConfig?.android?.config?.googleMaps?.apiKey;
+const hasAndroidKey =
+  !!Constants.expoConfig?.android?.config?.googleMaps?.apiKey ||
+  !!Constants.expoConfig?.extra?.androidMapsKeyPresent; // build-time flag from app.config.js
 const MAP_SUPPORTED = Platform.OS !== "android" || isExpoGo || hasAndroidKey;
 
 const MapPlaceholder = React.forwardRef(function MapPlaceholder({ style }, ref) {

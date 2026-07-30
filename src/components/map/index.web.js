@@ -22,6 +22,12 @@ function loadGoogleMaps() {
   if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (loaderPromise) return loaderPromise;
   loaderPromise = new Promise((resolve, reject) => {
+    // Google calls this when the key is rejected for this referer/API —
+    // without it a bad key just shows an eternally blank map.
+    window.gm_authFailure = () => {
+      console.error("Google Maps: key rejected for this site (check referer restriction / enabled APIs)");
+      reject(new Error("maps auth failure"));
+    };
     const s = document.createElement("script");
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(KEY)}&loading=async`;
     s.async = true;
@@ -31,9 +37,15 @@ function loadGoogleMaps() {
         window.google?.maps ? resolve(window.google.maps) : setTimeout(poll, 25);
       poll();
     };
-    s.onerror = () => reject(new Error("Google Maps failed to load"));
+    s.onerror = () => {
+      console.error("Google Maps script blocked or unreachable (ad blocker? offline?)");
+      reject(new Error("Google Maps failed to load"));
+    };
     document.head.appendChild(s);
   });
+  // Don't cache a failure forever — let the next mount retry (e.g. an ad
+  // blocker was disabled, or connectivity came back).
+  loaderPromise.catch(() => { loaderPromise = null; });
   return loaderPromise;
 }
 
