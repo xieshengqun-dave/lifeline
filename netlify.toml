@@ -14,6 +14,13 @@
   command = "npm ci && npx expo export --platform web -c && node scripts/postbuild-web.js"
   publish = "dist"
 
+[build.environment]
+  # Netlify's secrets scanner flags the Firebase ANDROID CLIENT key inside
+  # google-services.json. That key is public by design (it ships inside every
+  # APK; Google secures it via package/API restrictions) — exempt the files,
+  # don't treat it as a leaked secret. Real secrets stay out of this repo.
+  SECRETS_SCAN_OMIT_PATHS = "google-services.json,operator-app/google-services.json"
+
 # SPA fallback — React Navigation handles routes client-side.
 [[redirects]]
   from = "/*"
