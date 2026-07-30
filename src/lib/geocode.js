@@ -35,14 +35,21 @@ function fromGoogleComponents(result) {
 export async function geocodeAsync(query) {
   if (!isWeb) return Location.geocodeAsync(query);
 
+  // Google's Geocoding REST endpoint refuses referer-restricted (website)
+  // keys — the map key we ship is exactly that kind. Try Google in case the
+  // key allows it, but treat any non-OK status as "use Nominatim instead".
   if (KEY) {
-    const data = await fetchJson(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&region=my&key=${encodeURIComponent(KEY)}`
-    );
-    return (data.results || []).map((r) => ({
-      latitude: r.geometry.location.lat,
-      longitude: r.geometry.location.lng,
-    }));
+    try {
+      const data = await fetchJson(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&region=my&key=${encodeURIComponent(KEY)}`
+      );
+      if (data.status === "OK") {
+        return data.results.map((r) => ({
+          latitude: r.geometry.location.lat,
+          longitude: r.geometry.location.lng,
+        }));
+      }
+    } catch {}
   }
 
   const data = await fetchJson(
@@ -59,8 +66,10 @@ export async function reverseGeocodeAsync({ latitude, longitude }) {
       const data = await fetchJson(
         `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${encodeURIComponent(KEY)}`
       );
-      const first = data.results?.[0];
-      return first ? [fromGoogleComponents(first)] : [];
+      if (data.status === "OK" && data.results?.[0]) {
+        return [fromGoogleComponents(data.results[0])];
+      }
+      // non-OK (e.g. referer-restricted key) — fall through to Nominatim
     }
 
     const r = await fetchJson(

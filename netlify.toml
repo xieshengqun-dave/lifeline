@@ -15,11 +15,19 @@
   publish = "dist"
 
 [build.environment]
-  # Netlify's secrets scanner flags the Firebase ANDROID CLIENT key inside
-  # google-services.json. That key is public by design (it ships inside every
-  # APK; Google secures it via package/API restrictions) — exempt the files,
-  # don't treat it as a leaked secret. Real secrets stay out of this repo.
+  # Google Maps JS key for the web map — a PUBLIC client key (ships in the
+  # page source by definition), locked to this site's domain via Google's
+  # referer restriction. Set here rather than the Netlify UI because the UI's
+  # sensitive-value dialog refused to save it unmasked.
+  EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = "AIzaSyBMWqCanQcDlsXjbNwVZYdBqRNFGy9su8M"
+
+  # Netlify's secrets scanner flags Google client keys (AIza…) in the repo
+  # and build output. Both are public by design: google-services.json is the
+  # Firebase ANDROID client config (ships inside every APK), and the maps key
+  # above is baked into the web bundle intentionally. Real secrets stay out
+  # of this repo entirely (Railway/EAS only).
   SECRETS_SCAN_OMIT_PATHS = "google-services.json,operator-app/google-services.json"
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyBMWqCanQcDlsXjbNwVZYdBqRNFGy9su8M"
 
 # SPA fallback — React Navigation handles routes client-side.
 [[redirects]]
