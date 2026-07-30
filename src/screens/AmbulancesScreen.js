@@ -186,7 +186,7 @@ export default function AmbulancesScreen({ navigation }) {
                 >
                   <View style={a.pinWrap}>
                     <View style={[a.pin, isActive && a.pinOn]}>
-                      <MaterialCommunityIcons name="ambulance" size={13} color={isActive ? "#fff" : C.tealDeep} />
+                      <MaterialCommunityIcons name="ambulance" size={isActive ? 18 : 13} color={isActive ? "#fff" : C.tealDeep} />
                       <Text style={[a.pinT, isActive && a.pinTOn]}>RM{op.price.total.toFixed(0)}</Text>
                     </View>
                     <View style={[a.pinTip, isActive && a.pinTipOn]} />
@@ -336,14 +336,20 @@ const a = StyleSheet.create({
     borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 5,
     borderWidth: 1.5, borderColor: C.tealLine, ...shadows.floatingControl,
   },
-  pinOn: { backgroundColor: C.tealDeep, borderColor: C.tealDeep },
+  pinOn: {
+    backgroundColor: C.navy, borderColor: "#fff", borderWidth: 2.5,
+    paddingHorizontal: 13, paddingVertical: 8, gap: 6,
+    shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6,
+  },
   pinT: { ...type.bodySemibold, fontSize: 11.5, color: C.ink },
-  pinTOn: { color: "#fff" },
+  pinTOn: { color: "#fff", fontSize: 14.5, fontWeight: "800" },
   pinTip: {
     width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 6,
     borderLeftColor: "transparent", borderRightColor: "transparent", borderTopColor: "#fff", marginTop: -1,
   },
-  pinTipOn: { borderTopColor: C.tealDeep },
+  pinTipOn: {
+    borderTopColor: C.navy, borderLeftWidth: 7, borderRightWidth: 7, borderTopWidth: 9, marginTop: -2,
+  },
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0 },
   infoStrip: {
     flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "center",
