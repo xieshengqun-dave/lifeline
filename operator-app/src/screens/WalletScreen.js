@@ -1,11 +1,11 @@
 import React from "react";
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native";
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity, TextInput, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius, gradients } from "../theme/tokens";
-import { getOperatorWallet } from "../api/client";
+import { getOperatorWallet, getPaymentsStatus, createTopup } from "../api/client";
 import Header from "./_Header";
 import Card from "../components/ui/Card";
 
@@ -31,6 +31,9 @@ function txDate(iso) {
 
 export default function WalletScreen({ navigation }) {
   const [state, setState] = React.useState({ loading: true, refreshing: false, error: null, balance: 0, transactions: [] });
+  const [cardTopupsEnabled, setCardTopupsEnabled] = React.useState(false);
+  const [topupAmount, setTopupAmount] = React.useState("");
+  const [topupBusy, setTopupBusy] = React.useState(false);
 
   const load = React.useCallback(async (refreshing = false) => {
     setState((s) => ({ ...s, loading: !refreshing, refreshing, error: null }));
@@ -42,7 +45,31 @@ export default function WalletScreen({ navigation }) {
     }
   }, []);
 
-  React.useEffect(() => { load(); }, [load]);
+  // Reload on focus too — returning from Stripe's checkout tab should show
+  // the credited top-up without a manual refresh.
+  React.useEffect(() => {
+    load();
+    getPaymentsStatus().then((s) => setCardTopupsEnabled(s.enabled)).catch(() => {});
+    const unsub = navigation.addListener("focus", () => load(true));
+    return unsub;
+  }, [load, navigation]);
+
+  async function startTopup(amount) {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt < 10) {
+      Alert.alert("Top-up", "Minimum top-up is RM10.");
+      return;
+    }
+    setTopupBusy(true);
+    try {
+      const { url } = await createTopup(amt);
+      Linking.openURL(url);
+    } catch (e) {
+      Alert.alert("Top-up failed", e.message || "Please try again.");
+    } finally {
+      setTopupBusy(false);
+    }
+  }
 
   const low = state.balance < 30; // heads-up threshold; the hard gate is per-job fee
 
@@ -80,11 +107,45 @@ export default function WalletScreen({ navigation }) {
               )}
 
               <Card style={{ marginBottom: spacing.cardGap }}>
-                <Text style={w.sect}>HOW TO TOP UP</Text>
-                <Text style={w.body}>
-                  Bank-transfer the amount to Lifeline and send the receipt to your Lifeline
-                  contact — your wallet is credited the same day. In-app top-up is coming soon.
-                </Text>
+                <Text style={w.sect}>TOP UP</Text>
+                {cardTopupsEnabled ? (
+                  <>
+                    <View style={w.topupRow}>
+                      {[50, 100, 200].map((amt) => (
+                        <TouchableOpacity key={amt} style={w.topupBtn} disabled={topupBusy} onPress={() => startTopup(amt)}>
+                          <Text style={w.topupBtnT}>RM{amt}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={w.topupRow}>
+                      <TextInput
+                        style={w.topupInput}
+                        placeholder="Other amount (min RM10)"
+                        placeholderTextColor={C.faint}
+                        keyboardType="numeric"
+                        value={topupAmount}
+                        onChangeText={setTopupAmount}
+                        editable={!topupBusy}
+                      />
+                      <TouchableOpacity
+                        style={[w.topupGo, topupBusy && { opacity: 0.5 }]}
+                        disabled={topupBusy}
+                        onPress={() => startTopup(topupAmount)}
+                      >
+                        <Text style={[w.topupBtnT, { color: "#fff" }]}>{topupBusy ? "…" : "Pay"}</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={w.topupNote}>
+                      Opens a secure Stripe payment page in your browser. Pull down to refresh
+                      after paying — your balance updates as soon as the payment lands.
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={w.body}>
+                    Bank-transfer the amount to Lifeline and send the receipt to your Lifeline
+                    contact — your wallet is credited the same day.
+                  </Text>
+                )}
               </Card>
 
               <Text style={w.sect}>HISTORY</Text>
@@ -131,6 +192,18 @@ const w = StyleSheet.create({
   },
   warnT: { flex: 1, ...type.body, fontSize: 12, color: C.red, lineHeight: 17 },
   sect: { ...type.caption, fontSize: 11, color: C.faint, marginBottom: 8 },
+  topupRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+  topupBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: C.teal, borderRadius: radius.button,
+    paddingVertical: 10, alignItems: "center",
+  },
+  topupGo: { backgroundColor: C.teal, borderRadius: radius.button, paddingVertical: 10, paddingHorizontal: 22, alignItems: "center", justifyContent: "center" },
+  topupBtnT: { ...type.buttonLabel, fontSize: 13, color: C.tealDeep },
+  topupInput: {
+    flex: 1, borderWidth: 1.5, borderColor: C.line, borderRadius: radius.button,
+    paddingHorizontal: 12, paddingVertical: 9, ...type.body, fontSize: 13, color: C.ink,
+  },
+  topupNote: { ...type.body, fontSize: 11, color: C.faint, lineHeight: 15 },
   body: { ...type.body, fontSize: 12.5, color: C.body, lineHeight: 18 },
   empty: { ...type.body, fontSize: 12.5, color: C.faint, marginBottom: 10 },
   txCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, marginBottom: 8 },

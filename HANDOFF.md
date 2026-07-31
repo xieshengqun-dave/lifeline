@@ -264,9 +264,36 @@ bug came out of it:
     form, recent ledger).
   - Patient app payment made honest: methods are now "Cash — pay the crew
     directly" + disabled "Card (coming soon)"; receipt copy says cash-to-crew.
-- **Next:** user creates Stripe account → test keys → build patient card-linking
-  (per-trip charge) + operator self-serve top-up + trip_earning credits for card
-  trips. Rebuild both APKs (operator app has the new Wallet screen).
+- **Later same session — Stripe layer built and E2E-verified (test mode)**:
+  - User created Stripe account; `STRIPE_SECRET_KEY` lives in `backend/.env`
+    (user-added, never in chat/repo); publishable key recorded in CREDENTIALS.md
+    (unused for now — hosted Checkout means the backend drives everything).
+  - `services/payment.js` is THE provider boundary (every Stripe call lives
+    there; provider switch = rewrite one file; cards vault with Stripe, we
+    store only customer IDs — `User.stripeCustomerId`).
+  - **Patient card-linking**: hosted Checkout setup-mode (works from app AND
+    web, zero native SDK); Review screen shows "VISA •••• 4242" when linked,
+    "Link a card" otherwise; card bookings send paymentMethod "Card".
+  - **Card trips**: off-session PaymentIntent for the TOTAL on completion →
+    paymentStatus paid via stripe → operator wallet credited subtotal as
+    trip_earning (fee implicitly kept; NO service_fee row). Charge failure →
+    honest cash fallback: timeline event + push to patient + normal fee
+    deduction. Verified live: RM193.13 charged, +RM178.13 earning.
+  - **Operator self-serve top-up**: Wallet screen RM50/100/200 + custom →
+    hosted Checkout (payment mode) → success URL verifies with Stripe and
+    credits ONCE (idempotent per session id — reload-proof, verified).
+    Full E2E done in a real browser with the 4242 test card.
+  - Payments degrade to disabled (`GET /api/payments/status`) when the key is
+    absent — UIs hide card features. **Railway does NOT have the key yet: to
+    enable test-mode cards on the deployed backend, set STRIPE_SECRET_KEY
+    (test key) AND PUBLIC_API_URL=https://lifeline-production-d777.up.railway.app
+    in Railway variables** (the latter fixes Checkout redirect URLs, which
+    default to localhost).
+  - GOING LIVE later = swapping to a live Stripe key after real business
+    verification — an explicit human decision, not a code change.
+- **Next:** rebuild both APKs; set the two Railway env vars if card testing
+  against prod is wanted; webhook hardening (checkout.session.completed) is a
+  nice-to-have before pilot for top-ups that close the tab too early.
 
 ### 2026-07-30 — Push delivery wired (FCM), APKs rebuilt, patient web app (PWA) built
 - **Firebase/FCM done by the user**: project `lifeline-4ef3c`, both Android apps

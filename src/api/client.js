@@ -60,6 +60,9 @@ export const cancelBooking = (id) => req(`/api/bookings/${id}/cancel`, { method:
 export const getMyBookings = () => req("/api/bookings");
 export const getOverviewStats = () => req("/api/stats/overview");
 export const savePushToken = (pushToken) => req("/api/auth/push-token", { method: "POST", body: JSON.stringify({ pushToken }) });
+export const getPaymentsStatus = () => req("/api/payments/status");
+export const getSavedCard = () => req("/api/payments/card");
+export const createCardSetup = () => req("/api/payments/card/setup", { method: "POST" });
 export const getBooking = (id) => req(`/api/bookings/${id}`);
 export const getTracking = (id) => req(`/api/bookings/${id}/tracking`);
 export const submitRating = (id, p) => req(`/api/bookings/${id}/rating`, { method: "POST", body: JSON.stringify(p) });

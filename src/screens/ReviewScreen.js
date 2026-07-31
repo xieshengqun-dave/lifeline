@@ -1,26 +1,21 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius } from "../theme/tokens";
 import { BookingContext } from "../../App";
-import { createBooking, ApiError } from "../api/client";
+import { createBooking, getPaymentsStatus, getSavedCard, createCardSetup, ApiError } from "../api/client";
 import { toApiLocation, toApiPatient } from "../api/mappers";
 import Header from "./_Header";
 import Card from "../components/ui/Card";
 import GradientButton from "../components/ui/GradientButton";
 
-// Grab agent model (decided 2026-07-31): the patient pays the OPERATOR
-// directly — the platform is not in the money flow for cash trips. Card
-// payment arrives with the Stripe integration; until then it's listed
-// honestly as coming soon, not as a working option.
-const METHOD_ICONS = {
-  "Cash — pay the crew directly": "cash-outline",
-  "Card (coming soon)": "card-outline",
-};
-const METHODS = Object.keys(METHOD_ICONS);
-const isMethodEnabled = (m) => !m.includes("coming soon");
+// Grab agent model (decided 2026-07-31): cash goes straight to the crew;
+// card trips charge the patient's linked card (Stripe vault — we never see
+// card numbers) when the trip completes. Linking happens on Stripe's hosted
+// page opened in the browser.
+const CASH_METHOD = "Cash — pay the crew directly";
 
 // Payment method is chosen here, before the booking is created — a real
 // backend constraint (POST /bookings requires paymentMethod in the same
@@ -32,10 +27,42 @@ export default function ReviewScreen({ navigation }) {
   const op = booking.selectedOperator;
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [payments, setPayments] = React.useState({ enabled: false, card: null });
+  const [linking, setLinking] = React.useState(false);
   const goHome = () => {
     resetDraft();
     navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
   };
+
+  // Card availability — refetched on focus so returning from Stripe's hosted
+  // link-card page picks the new card up without any manual refresh.
+  React.useEffect(() => {
+    let dead = false;
+    const load = async () => {
+      try {
+        const status = await getPaymentsStatus();
+        const card = status.enabled ? (await getSavedCard()).card : null;
+        if (!dead) setPayments({ enabled: status.enabled, card });
+      } catch {}
+    };
+    load();
+    const unsub = navigation.addListener("focus", load);
+    return () => { dead = true; unsub(); };
+  }, [navigation]);
+
+  const usingCard = booking.payMethod === "Card";
+
+  async function linkCard() {
+    setLinking(true);
+    try {
+      const { url } = await createCardSetup();
+      Linking.openURL(url);
+    } catch (e) {
+      setError(e.message || "Could not start card setup.");
+    } finally {
+      setLinking(false);
+    }
+  }
 
   const Row = ({ l, r }) => (
     <View style={rv.row}><Text style={rv.l}>{l}</Text><Text style={rv.r}>{r}</Text></View>
@@ -111,22 +138,35 @@ export default function ReviewScreen({ navigation }) {
 
         <Text style={rv.sectOutside}>PAYMENT METHOD</Text>
         <Card noPad style={{ marginBottom: spacing.cardGap }}>
-          {METHODS.map((m, i) => (
-            <TouchableOpacity
-              key={m}
-              style={[rv.methodRow, i === METHODS.length - 1 && { borderBottomWidth: 0 }, !isMethodEnabled(m) && { opacity: 0.45 }]}
-              disabled={!isMethodEnabled(m)}
-              onPress={() => update({ payMethod: m })}
-            >
-              <View style={[rv.methodIconTile, booking.payMethod === m && { backgroundColor: C.tealSoft }]}>
-                <Ionicons name={METHOD_ICONS[m]} size={17} color={booking.payMethod === m ? C.tealDeep : C.faint} />
+          <TouchableOpacity style={rv.methodRow} onPress={() => update({ payMethod: CASH_METHOD })}>
+            <View style={[rv.methodIconTile, !usingCard && { backgroundColor: C.tealSoft }]}>
+              <Ionicons name="cash-outline" size={17} color={!usingCard ? C.tealDeep : C.faint} />
+            </View>
+            <Text style={rv.methodName}>{CASH_METHOD}</Text>
+            <View style={[rv.radio, !usingCard && rv.radioOn]}>{!usingCard && <View style={rv.dot} />}</View>
+          </TouchableOpacity>
+
+          {payments.enabled && payments.card ? (
+            <TouchableOpacity style={[rv.methodRow, { borderBottomWidth: 0 }]} onPress={() => update({ payMethod: "Card" })}>
+              <View style={[rv.methodIconTile, usingCard && { backgroundColor: C.tealSoft }]}>
+                <Ionicons name="card-outline" size={17} color={usingCard ? C.tealDeep : C.faint} />
               </View>
-              <Text style={rv.methodName}>{m}</Text>
-              <View style={[rv.radio, booking.payMethod === m && rv.radioOn]}>
-                {booking.payMethod === m && <View style={rv.dot} />}
-              </View>
+              <Text style={rv.methodName}>
+                {payments.card.brand.toUpperCase()} •••• {payments.card.last4} — charged when the trip completes
+              </Text>
+              <View style={[rv.radio, usingCard && rv.radioOn]}>{usingCard && <View style={rv.dot} />}</View>
             </TouchableOpacity>
-          ))}
+          ) : payments.enabled ? (
+            <TouchableOpacity style={[rv.methodRow, { borderBottomWidth: 0 }]} onPress={linkCard} disabled={linking}>
+              <View style={rv.methodIconTile}>
+                <Ionicons name="add-circle-outline" size={17} color={C.tealDeep} />
+              </View>
+              <Text style={[rv.methodName, { color: C.tealDeep }]}>
+                {linking ? "Opening card setup…" : "Link a card to pay in-app"}
+              </Text>
+              <Ionicons name="open-outline" size={15} color={C.faint} />
+            </TouchableOpacity>
+          ) : null}
         </Card>
 
         <Card style={{ marginBottom: spacing.cardGap }}>

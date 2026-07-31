@@ -21,4 +21,10 @@ export const config = {
   allowUnverifiedSocialAuth: process.env.ALLOW_UNVERIFIED_SOCIAL_AUTH === "true",
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
   appleClientId: process.env.APPLE_CLIENT_ID || null,
+  // Stripe (test keys during the build; live keys are a human go-live
+  // decision). Optional: card features 501 cleanly when absent.
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || null,
+  // Where hosted Checkout sends the browser back to (the API renders a tiny
+  // "return to the app" page). Defaults to localhost for dev.
+  publicApiUrl: process.env.PUBLIC_API_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 4000}`,
 };

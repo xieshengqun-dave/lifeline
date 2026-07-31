@@ -66,6 +66,25 @@ export async function chargeServiceFee(booking) {
   });
 }
 
+// Card trip settled through the platform: the platform captured the TOTAL,
+// so the operator's subtotal is credited to their wallet as withdrawable
+// earnings (the fee is implicitly kept — no service_fee row for card trips).
+// Idempotent per booking.
+export async function creditTripEarning(booking) {
+  if (!booking.operatorId || !booking.subtotal || booking.subtotal <= 0) return null;
+  const existing = await prisma.walletTransaction.findFirst({
+    where: { bookingId: booking.id, type: WALLET_TX_TYPE.TRIP_EARNING },
+  });
+  if (existing) return existing;
+  return applyWalletTransaction({
+    operatorId: booking.operatorId,
+    type: WALLET_TX_TYPE.TRIP_EARNING,
+    amount: booking.subtotal,
+    bookingId: booking.id,
+    note: `Card trip earning — ${booking.pickupName} → ${booking.destinationName}`,
+  });
+}
+
 // Offer-time gate (decided 2026-07-31): an operator only receives a job if
 // their wallet covers that job's service fee — no debt by design.
 export function canCoverFee(operator, serviceFee) {

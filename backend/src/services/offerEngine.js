@@ -6,7 +6,8 @@ import { computeFare, computeEtaMinutes } from "./pricing.js";
 import { getPlatformFeeSetting } from "./settings.js";
 import { BOOKING_STATUS, OFFER_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
 import { pushToUser, pushToOperator } from "./push.js";
-import { chargeServiceFee, canCoverFee } from "./wallet.js";
+import { chargeServiceFee, creditTripEarning, canCoverFee } from "./wallet.js";
+import { chargeBookingCard } from "./payment.js";
 import { HttpError } from "../middleware/errorHandler.js";
 
 // In-memory timers, keyed by BookingOffer.id. BookingOffer.expiresAt is the
@@ -502,15 +503,42 @@ export async function advanceBookingStatus(bookingId, operatorId, targetStatus) 
   await addTrackingEvent(bookingId, STATUS_LABELS[targetStatus] || targetStatus);
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: targetStatus });
 
-  // Trip done → platform fee comes out of the operator's wallet (cash-trip
-  // model; the patient paid the crew directly). Idempotent per booking.
+  // Trip done → settle money. Never blocks completion; failures shout.
   if (targetStatus === BOOKING_STATUS.COMPLETED) {
-    await chargeServiceFee(updated).catch((err) =>
-      // Never block completion over the ledger — but shout, this is money.
-      console.error(`chargeServiceFee(${bookingId}) FAILED — reconcile manually:`, err)
+    await settleCompletedBooking(updated).catch((err) =>
+      console.error(`settleCompletedBooking(${bookingId}) FAILED — reconcile manually:`, err)
     );
   }
   return updated;
+}
+
+// Card trip: charge the saved card for the TOTAL; on success the operator's
+// subtotal is credited to their wallet (platform keeps the fee). On decline,
+// fall back to the cash flow honestly: patient pays the crew, fee deducts
+// from the operator wallet, and the patient is told by push + timeline.
+async function settleCompletedBooking(booking) {
+  if (booking.paymentMethod === "Card") {
+    const result = await chargeBookingCard(booking);
+    if (result.charged) {
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { paymentStatus: "paid", paymentProvider: "stripe" },
+      });
+      await addTrackingEvent(booking.id, "Card Payment Received");
+      await creditTripEarning(booking);
+      return;
+    }
+    console.error(`card charge failed for booking ${booking.id}: ${result.reason}`);
+    await prisma.booking.update({ where: { id: booking.id }, data: { paymentStatus: "failed" } });
+    await addTrackingEvent(booking.id, "Card Payment Failed — Pay Crew In Cash");
+    pushToUser(booking.userId, {
+      title: "Card payment failed",
+      body: `Your card couldn't be charged for this trip. Please pay the crew RM ${booking.total?.toFixed(2)} in cash.`,
+      data: { kind: "card_failed", bookingId: booking.id },
+    });
+    // fall through to the cash model below
+  }
+  await chargeServiceFee(booking);
 }
 
 // Run once at boot, before the server starts accepting requests, so a

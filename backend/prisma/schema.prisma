@@ -26,6 +26,7 @@ model User {
   phone           String?   @unique
   email           String?   @unique
   pushToken       String?   // Expo push token — set by the app after permission
+  stripeCustomerId String?  @unique // provider reference only — never card data
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
