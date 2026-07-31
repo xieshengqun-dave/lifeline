@@ -14,8 +14,8 @@ for (const op of operators) {
 
   const operator = await prisma.operator.upsert({
     where: { email: operatorFields.email },
-    update: operatorFields,
-    create: operatorFields,
+    update: operatorFields, // never touches walletBalance — reseeds must not reset money
+    create: { ...operatorFields, walletBalance: 200 }, // starter float for brand-new seeds
   });
 
   for (const a of ambulances) {

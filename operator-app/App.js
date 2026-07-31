@@ -24,6 +24,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import IncomingRequestsScreen from "./src/screens/IncomingRequestsScreen";
 import ActiveTripScreen from "./src/screens/ActiveTripScreen";
 import TripHistoryScreen from "./src/screens/TripHistoryScreen";
+import WalletScreen from "./src/screens/WalletScreen";
 
 const Stack = createNativeStackNavigator();
 const TOKEN_KEY = "lifeline_operator_token";
@@ -180,6 +181,7 @@ export default function App() {
             <Stack.Screen name="Login" component={OperatorLoginScreen} />
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="IncomingRequests" component={IncomingRequestsScreen} />
+            <Stack.Screen name="Wallet" component={WalletScreen} />
             <Stack.Screen name="ActiveTrip" component={ActiveTripScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="TripHistory" component={TripHistoryScreen} />
           </Stack.Navigator>

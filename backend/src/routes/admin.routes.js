@@ -8,6 +8,7 @@ import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { VETTING_STATUS, PLATFORM_FEE_TYPE } from "../lib/constants.js";
 import { getPlatformFeeSetting, updatePlatformFeeSetting } from "../services/settings.js";
 import { getCompletedTripCounts } from "../services/rating.js";
+import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
 
 // Static shared-secret admin auth, no admin user table — pilot-only,
 // intentionally minimal until the Phase 4 admin dashboard build.
@@ -30,6 +31,7 @@ const SAFE_OPERATOR_FIELDS = {
   online: true,
   ratingAvg: true,
   ratingCount: true,
+  walletBalance: true,
   createdAt: true,
   updatedAt: true,
   _count: { select: { ambulances: true } },
@@ -178,6 +180,50 @@ router.get(
       take: 100,
     });
     res.json(bookings.map((b) => ({ ...b, operator: b.operator ? withAmbulanceCount(b.operator) : null })));
+  })
+);
+
+// ── Operator wallet (manual top-ups / adjustments until a payment provider
+// is integrated; every mutation is a ledger row — see services/wallet.js) ──
+
+const walletTxSchema = z.object({
+  // topup: operator's bank transfer received. adjustment: correction, either
+  // sign. withdrawal: paid out to the operator's bank (negative).
+  type: z.enum([WALLET_TX_TYPE.TOPUP, WALLET_TX_TYPE.ADJUSTMENT, WALLET_TX_TYPE.WITHDRAWAL]),
+  amount: z.number().refine((n) => n !== 0, "amount cannot be zero"),
+  note: z.string().min(3).max(300),
+});
+
+router.get(
+  "/operators/:id/wallet",
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const operator = await prisma.operator.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, walletBalance: true },
+    });
+    if (!operator) throw new HttpError(404, "not_found", "Operator not found");
+    const transactions = await prisma.walletTransaction.findMany({
+      where: { operatorId: req.params.id },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    res.json({ ...operator, transactions });
+  })
+);
+
+router.post(
+  "/operators/:id/wallet",
+  requireAdmin,
+  validate(walletTxSchema),
+  asyncHandler(async (req, res) => {
+    const row = await applyWalletTransaction({
+      operatorId: req.params.id,
+      type: req.body.type,
+      amount: req.body.amount,
+      note: req.body.note,
+    });
+    res.status(201).json(row);
   })
 );
 

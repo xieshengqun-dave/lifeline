@@ -1,5 +1,5 @@
 import React from "react";
-import { getOperators, createOperator, updateOperator, approveOperator, suspendOperator } from "../api/client";
+import { getOperators, createOperator, updateOperator, approveOperator, suspendOperator, getOperatorWallet, applyWalletTransaction } from "../api/client";
 import { formatMoney } from "../lib/format";
 import StatusBadge from "../components/StatusBadge";
 
@@ -41,6 +41,10 @@ export default function OperatorsPage() {
   const [form, setForm] = React.useState(EMPTY_FORM);
   const [formError, setFormError] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
+  const [walletTx, setWalletTx] = React.useState([]);
+  const [walletForm, setWalletForm] = React.useState({ type: "topup", amount: "", note: "" });
+  const [walletError, setWalletError] = React.useState(null);
+  const [walletBusy, setWalletBusy] = React.useState(false);
 
   const load = React.useCallback(async () => {
     try {
@@ -59,6 +63,43 @@ export default function OperatorsPage() {
       setLoading(false);
     })();
   }, [load]);
+
+  React.useEffect(() => {
+    if (!selectedId) return;
+    let dead = false;
+    setWalletTx([]);
+    setWalletError(null);
+    getOperatorWallet(selectedId)
+      .then((w) => { if (!dead) setWalletTx(w.transactions); })
+      .catch((err) => { if (!dead) setWalletError(err.message || "Could not load wallet."); });
+    return () => { dead = true; };
+  }, [selectedId]);
+
+  async function submitWalletTx(operatorId) {
+    const raw = Number(walletForm.amount);
+    if (!Number.isFinite(raw) || raw === 0) { setWalletError("Enter a non-zero amount."); return; }
+    if (!walletForm.note.trim() || walletForm.note.trim().length < 3) {
+      setWalletError("A note is required (e.g. bank transfer reference).");
+      return;
+    }
+    // topup is always a credit, withdrawal always a debit; adjustment as typed.
+    const amount =
+      walletForm.type === "topup" ? Math.abs(raw)
+      : walletForm.type === "withdrawal" ? -Math.abs(raw)
+      : raw;
+    setWalletBusy(true);
+    setWalletError(null);
+    try {
+      const row = await applyWalletTransaction(operatorId, { type: walletForm.type, amount, note: walletForm.note.trim() });
+      setWalletTx((prev) => [row, ...prev]);
+      setOperators((prev) => prev.map((o) => (o.id === operatorId ? { ...o, walletBalance: row.balanceAfter } : o)));
+      setWalletForm({ type: "topup", amount: "", note: "" });
+    } catch (err) {
+      setWalletError(err.message || "Wallet update failed.");
+    } finally {
+      setWalletBusy(false);
+    }
+  }
 
   async function handleApprove(id) {
     setPendingActionId(id);
@@ -328,6 +369,61 @@ export default function OperatorsPage() {
           <div className="rate-card-box">
             <div className="drawer-detail-row"><span>Base dispatch</span><span>{formatMoney(selected.baseFare)}</span></div>
             <div className="drawer-detail-row"><span>Per km</span><span>{formatMoney(selected.perKmRate)}</span></div>
+          </div>
+
+          <div className="drawer-section-title">WALLET</div>
+          <div className="rate-card-box">
+            <div className="drawer-detail-row">
+              <span>Balance</span>
+              <span style={{ fontWeight: 700, color: (selected.walletBalance ?? 0) < 30 ? "#c0392b" : undefined }}>
+                {formatMoney(selected.walletBalance ?? 0)}
+              </span>
+            </div>
+            {walletError && <div className="error-box" style={{ marginTop: 8 }}>{walletError}</div>}
+            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+              <select
+                value={walletForm.type}
+                onChange={(e) => setWalletForm((f) => ({ ...f, type: e.target.value }))}
+                disabled={walletBusy}
+                style={{ flex: "0 0 110px" }}
+              >
+                <option value="topup">Top-up</option>
+                <option value="withdrawal">Withdrawal</option>
+                <option value="adjustment">Adjustment</option>
+              </select>
+              <input
+                type="number"
+                placeholder="RM"
+                value={walletForm.amount}
+                onChange={(e) => setWalletForm((f) => ({ ...f, amount: e.target.value }))}
+                disabled={walletBusy}
+                style={{ flex: "0 0 90px" }}
+              />
+              <input
+                type="text"
+                placeholder="Note / transfer ref"
+                value={walletForm.note}
+                onChange={(e) => setWalletForm((f) => ({ ...f, note: e.target.value }))}
+                disabled={walletBusy}
+                style={{ flex: 1 }}
+              />
+            </div>
+            <button
+              className="btn btn-primary drawer-btn"
+              style={{ marginTop: 8, width: "100%" }}
+              disabled={walletBusy}
+              onClick={() => submitWalletTx(selected.id)}
+            >
+              {walletBusy ? "Applying…" : "Apply to wallet"}
+            </button>
+            {walletTx.slice(0, 6).map((t) => (
+              <div key={t.id} className="drawer-detail-row" style={{ fontSize: 12 }}>
+                <span>{t.type.replace("_", " ")}{t.note ? ` · ${t.note.slice(0, 26)}` : ""}</span>
+                <span style={{ color: t.amount >= 0 ? "#1e8e5a" : "#c0392b" }}>
+                  {t.amount >= 0 ? "+" : "−"}{formatMoney(Math.abs(t.amount))}
+                </span>
+              </div>
+            ))}
           </div>
 
           <div className="drawer-section-title">FLEET · {selected.ambulanceCount} UNIT{selected.ambulanceCount === 1 ? "" : "S"}</div>

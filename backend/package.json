@@ -8,7 +8,7 @@
     "start": "node src/server.js",
     "seed": "node src/seed.js",
     "pretest": "dotenv -e .env.test -- npx prisma migrate deploy",
-    "test": "dotenv -e .env.test -- node --test test/booking-flow.test.js && dotenv -e .env.test -- node --test test/cancel-and-expire.test.js && dotenv -e .env.test -- node --test test/settings.test.js && dotenv -e .env.test -- node --test test/rating.test.js"
+    "test": "dotenv -e .env.test -- node --test test/booking-flow.test.js && dotenv -e .env.test -- node --test test/cancel-and-expire.test.js && dotenv -e .env.test -- node --test test/settings.test.js && dotenv -e .env.test -- node --test test/rating.test.js && dotenv -e .env.test -- node --test test/wallet.test.js"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

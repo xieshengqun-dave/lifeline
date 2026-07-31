@@ -6,6 +6,7 @@ import { computeFare, computeEtaMinutes } from "./pricing.js";
 import { getPlatformFeeSetting } from "./settings.js";
 import { BOOKING_STATUS, OFFER_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
 import { pushToUser, pushToOperator } from "./push.js";
+import { chargeServiceFee, canCoverFee } from "./wallet.js";
 import { HttpError } from "../middleware/errorHandler.js";
 
 // In-memory timers, keyed by BookingOffer.id. BookingOffer.expiresAt is the
@@ -151,6 +152,19 @@ async function offerToOperator(booking, candidate, sequence) {
   return { offer, booking: updated };
 }
 
+// Wallet gate (decided 2026-07-31): only operators whose wallet covers this
+// job's service fee may receive it — the fee is deducted on completion and
+// no debt accrues by design. Applied wherever a candidate list is chosen
+// from (initial offer, cascade, scheduled dispatch); the patient-facing
+// quote applies the same rule so patients never see un-offerable operators.
+async function affordableCandidates(candidates, distanceKm) {
+  if (!candidates.length) return candidates;
+  const feeSetting = await getPlatformFeeSetting();
+  return candidates.filter(({ operator }) =>
+    canCoverFee(operator, computeFare({ operator, distanceKm, feeSetting }).serviceFee)
+  );
+}
+
 // On decline/timeout/skip: mark the transient "declined" pulse, then offer
 // the next nearest untried operator, or expire the booking (999 fallback)
 // if none remain. `reason` is one of: operator_declined | timed_out | skipped.
@@ -163,11 +177,14 @@ export async function advanceToNextOperator(bookingId, reason) {
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: BOOKING_STATUS.DECLINED, reason });
 
   const triedOperatorIds = booking.offers.map((o) => o.operatorId);
-  const candidates = await findEligibleOperators({
-    pickupLat: booking.pickupLat,
-    pickupLng: booking.pickupLng,
-    excludeOperatorIds: triedOperatorIds,
-  });
+  const candidates = await affordableCandidates(
+    await findEligibleOperators({
+      pickupLat: booking.pickupLat,
+      pickupLng: booking.pickupLng,
+      excludeOperatorIds: triedOperatorIds,
+    }),
+    booking.distanceKm
+  );
 
   if (candidates.length === 0) {
     const expired = await prisma.booking.update({
@@ -255,11 +272,14 @@ export async function createBookingWithFirstOffer({
     return booking;
   }
 
-  const candidates = await findEligibleOperators({
-    pickupLat: pickup.lat,
-    pickupLng: pickup.lng,
-    excludeOperatorIds: [],
-  });
+  const candidates = await affordableCandidates(
+    await findEligibleOperators({
+      pickupLat: pickup.lat,
+      pickupLng: pickup.lng,
+      excludeOperatorIds: [],
+    }),
+    distanceKm
+  );
 
   const chosen = candidates.find((c) => c.operator.id === chosenOperatorId);
   const nextBest = chosen || candidates[0];
@@ -290,11 +310,14 @@ export async function dispatchScheduledBooking(bookingId) {
   if (!booking || booking.status !== BOOKING_STATUS.REQUESTED || !booking.scheduledAt) return booking;
   if (booking.offers.length > 0) return booking;
 
-  const candidates = await findEligibleOperators({
-    pickupLat: booking.pickupLat,
-    pickupLng: booking.pickupLng,
-    excludeOperatorIds: [],
-  });
+  const candidates = await affordableCandidates(
+    await findEligibleOperators({
+      pickupLat: booking.pickupLat,
+      pickupLng: booking.pickupLng,
+      excludeOperatorIds: [],
+    }),
+    booking.distanceKm
+  );
   const chosen = candidates.find((c) => c.operator.id === booking.preferredOperatorId);
   const nextBest = chosen || candidates[0];
 
@@ -478,6 +501,15 @@ export async function advanceBookingStatus(bookingId, operatorId, targetStatus) 
   const updated = await prisma.booking.update({ where: { id: bookingId }, data: { status: targetStatus } });
   await addTrackingEvent(bookingId, STATUS_LABELS[targetStatus] || targetStatus);
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: targetStatus });
+
+  // Trip done → platform fee comes out of the operator's wallet (cash-trip
+  // model; the patient paid the crew directly). Idempotent per booking.
+  if (targetStatus === BOOKING_STATUS.COMPLETED) {
+    await chargeServiceFee(updated).catch((err) =>
+      // Never block completion over the ledger — but shout, this is money.
+      console.error(`chargeServiceFee(${bookingId}) FAILED — reconcile manually:`, err)
+    );
+  }
   return updated;
 }
 

@@ -229,6 +229,45 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-07-31 — Operator wallet (Grab agent model): ledger, fee deduction, gating
+- **Payment model decided by the user** (the CLAUDE.md payments flag, now resolved):
+  patients pay operators DIRECTLY (cash now, linked card via Stripe later) — the
+  platform stays out of the patient money flow; the platform's cut deducts from a
+  **prepaid operator wallet** on trip completion. Patient stored-value wallet was
+  requested, **flagged as Bank Negara e-money licensing territory, and dropped for
+  v1** (cash + per-trip card charge gives the Grab feel without holding float).
+  Provider: **Stripe test mode** chosen for the card/top-up build (user aware it's
+  also the prod provider unless migrated; provider calls will stay isolated in
+  services/payment.js). **Stripe keys not yet provided — card linking and
+  self-serve top-up NOT built yet**; top-ups are manual (bank transfer → admin
+  credits wallet).
+- **Built + tested (5 new tests, suite green)**:
+  - `Operator.walletBalance` + append-only `WalletTransaction` ledger (types:
+    topup/service_fee/trip_earning/withdrawal/adjustment; every balance change is
+    a row inside one DB transaction; balanceAfter audit column). Migration grants
+    existing operators **RM100 starter credit** (ledger row included) so gating
+    doesn't block everyone at deploy; seed gives new operators RM200 on CREATE
+    only (reseeds never reset money). NOTE: migration's CURRENT_TIMESTAMP rows
+    are DB-local time — skewed +8h on this Mac (fixed by hand locally), fine on
+    Railway (UTC).
+  - Fee deduction on completion (idempotent per booking; deducts even into
+    negative if a concurrent trip drained the float — gate is at offer time).
+  - **Wallet gate** (user decision: no debt): quote results AND every offer path
+    (initial/cascade/scheduled dispatch) skip operators whose balance can't cover
+    that job's fee. Fixture operators get walletBalance 500 so pre-wallet tests
+    behave unchanged.
+  - Endpoints: `GET /api/operator/wallet`; admin `GET/POST
+    /api/admin/operators/:id/wallet` (topup/withdrawal/adjustment, note required).
+  - Operator app: Wallet screen (balance card, low-balance warning <RM30, manual
+    top-up instructions, ledger list) + tappable Wallet stat on Home.
+  - Admin: wallet section in the operator drawer (balance, apply-transaction
+    form, recent ledger).
+  - Patient app payment made honest: methods are now "Cash — pay the crew
+    directly" + disabled "Card (coming soon)"; receipt copy says cash-to-crew.
+- **Next:** user creates Stripe account → test keys → build patient card-linking
+  (per-trip charge) + operator self-serve top-up + trip_earning credits for card
+  trips. Rebuild both APKs (operator app has the new Wallet screen).
+
 ### 2026-07-30 — Push delivery wired (FCM), APKs rebuilt, patient web app (PWA) built
 - **Firebase/FCM done by the user**: project `lifeline-4ef3c`, both Android apps
   registered, FCM V1 service-account key uploaded to both EAS projects. Combined

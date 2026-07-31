@@ -11,16 +11,16 @@ import Header from "./_Header";
 import Card from "../components/ui/Card";
 import GradientButton from "../components/ui/GradientButton";
 
+// Grab agent model (decided 2026-07-31): the patient pays the OPERATOR
+// directly — the platform is not in the money flow for cash trips. Card
+// payment arrives with the Stripe integration; until then it's listed
+// honestly as coming soon, not as a working option.
 const METHOD_ICONS = {
-  "Credit / Debit Card": "card-outline",
-  "FPX Online Banking": "business-outline",
-  "GrabPay": "wallet-outline",
-  "Touch 'n Go eWallet": "phone-portrait-outline",
-  "Insurance": "shield-checkmark-outline",
-  "Corporate Account": "briefcase-outline",
-  "Pay At Hospital": "medkit-outline",
+  "Cash — pay the crew directly": "cash-outline",
+  "Card (coming soon)": "card-outline",
 };
 const METHODS = Object.keys(METHOD_ICONS);
+const isMethodEnabled = (m) => !m.includes("coming soon");
 
 // Payment method is chosen here, before the booking is created — a real
 // backend constraint (POST /bookings requires paymentMethod in the same
@@ -112,7 +112,12 @@ export default function ReviewScreen({ navigation }) {
         <Text style={rv.sectOutside}>PAYMENT METHOD</Text>
         <Card noPad style={{ marginBottom: spacing.cardGap }}>
           {METHODS.map((m, i) => (
-            <TouchableOpacity key={m} style={[rv.methodRow, i === METHODS.length - 1 && { borderBottomWidth: 0 }]} onPress={() => update({ payMethod: m })}>
+            <TouchableOpacity
+              key={m}
+              style={[rv.methodRow, i === METHODS.length - 1 && { borderBottomWidth: 0 }, !isMethodEnabled(m) && { opacity: 0.45 }]}
+              disabled={!isMethodEnabled(m)}
+              onPress={() => update({ payMethod: m })}
+            >
               <View style={[rv.methodIconTile, booking.payMethod === m && { backgroundColor: C.tealSoft }]}>
                 <Ionicons name={METHOD_ICONS[m]} size={17} color={booking.payMethod === m ? C.tealDeep : C.faint} />
               </View>

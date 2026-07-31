@@ -56,7 +56,7 @@ const initialBooking = {
   age: "45", gender: "Male", cond: "Fully Conscious",
   oxy: "Yes", flow: "<5L", iv: "No", medication: "",
   diagnosisType: "RTA", diagnosisOther: "", specialRequest: "",
-  payMethod: "Credit / Debit Card",
+  payMethod: "Cash — pay the crew directly",
   selectedOperator: null, // normalizeOperator() shape — see src/api/mappers.js
   bookingId: null,
   bookingStatus: null,

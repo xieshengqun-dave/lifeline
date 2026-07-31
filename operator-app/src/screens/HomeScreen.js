@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { gradients, type, spacing, radius, shadows } from "../theme/tokens";
 import { AuthContext, OperatorContext } from "../../App";
-import { getOperatorMe, getOperatorBookings, getOperatorFleet, setAvailability } from "../api/client";
+import { getOperatorMe, getOperatorBookings, getOperatorFleet, getOperatorWallet, setAvailability } from "../api/client";
 import Header from "./_Header";
 import Card from "../components/ui/Card";
 
@@ -24,6 +24,7 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = React.useState(true);
   const [bookings, setBookings] = React.useState([]);
   const [fleet, setFleet] = React.useState({ ambulances: [] });
+  const [wallet, setWallet] = React.useState(null);
   const [toggling, setToggling] = React.useState(false);
 
   useFocusEffect(
@@ -32,11 +33,14 @@ export default function HomeScreen({ navigation }) {
       (async () => {
         setLoading(true);
         try {
-          const [me, list, fleetRes] = await Promise.all([getOperatorMe(), getOperatorBookings(), getOperatorFleet()]);
+          const [me, list, fleetRes, walletRes] = await Promise.all([
+            getOperatorMe(), getOperatorBookings(), getOperatorFleet(), getOperatorWallet(),
+          ]);
           if (cancelled) return;
           setOnline(me.online);
           setBookings(list);
           setFleet(fleetRes);
+          setWallet(walletRes.balance);
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -109,6 +113,14 @@ export default function HomeScreen({ navigation }) {
                 <Text style={h.statL}>Earnings</Text>
                 <Text style={[h.statN, { color: C.tealDeep }]}>RM {earningsToday.toFixed(0)}</Text>
               </Card>
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.85} onPress={() => navigation.navigate("Wallet")}>
+                <Card style={[h.statCard, { flex: undefined }]}>
+                  <Text style={h.statL}>Wallet</Text>
+                  <Text style={[h.statN, { color: wallet != null && wallet < 30 ? C.red : C.ink }]}>
+                    {wallet != null ? `RM ${wallet.toFixed(0)}` : "—"}
+                  </Text>
+                </Card>
+              </TouchableOpacity>
             </View>
 
             <View style={h.fleetHeaderRow}>

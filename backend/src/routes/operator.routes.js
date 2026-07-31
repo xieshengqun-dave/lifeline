@@ -164,6 +164,25 @@ router.post(
   })
 );
 
+router.get(
+  "/wallet",
+  requireOperatorAuth,
+  asyncHandler(async (req, res) => {
+    const [operator, transactions] = await Promise.all([
+      prisma.operator.findUnique({
+        where: { id: req.operatorId },
+        select: { walletBalance: true },
+      }),
+      prisma.walletTransaction.findMany({
+        where: { operatorId: req.operatorId },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+    ]);
+    res.json({ balance: operator.walletBalance, transactions });
+  })
+);
+
 const pushTokenSchema = z.object({
   pushToken: z.string().max(200).regex(/^Expo(nent)?PushToken\[.+\]$/).nullable(),
 });

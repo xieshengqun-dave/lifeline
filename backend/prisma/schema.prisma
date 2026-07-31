@@ -50,6 +50,14 @@ model Operator {
   perKmRate       Float
   fleetSummary    String? // e.g. "2 ALS, 1 BLS" — quick-display rollup
   pushToken       String? // Expo push token — set by the operator app after permission
+
+  // Merchant ledger balance (RM) — prepaid float the platform's fees deduct
+  // from (Grab agent model; patient money never flows through the platform
+  // for cash trips). Always mutated together with a WalletTransaction row,
+  // inside one DB transaction — see services/wallet.js. Not consumer e-money.
+  walletBalance Float @default(0)
+
+  walletTransactions WalletTransaction[]
   vettingStatus   String   @default("pending") // pending | approved | suspended
   online          Boolean  @default(false)
   ratingAvg       Float? // recomputed on each new Rating write, null until the first
@@ -96,6 +104,22 @@ model Crew {
   bookings Booking[]
 
   @@index([operatorId])
+}
+
+// ── Operator wallet ledger (append-only; balance is derivable from rows) ──
+model WalletTransaction {
+  id         String   @id @default(cuid())
+  operator   Operator @relation(fields: [operatorId], references: [id])
+  operatorId String
+  // topup | service_fee | trip_earning | withdrawal | adjustment
+  type         String
+  amount       Float // signed: credits positive, debits negative
+  balanceAfter Float // denormalized audit trail
+  bookingId    String? // set for service_fee / trip_earning rows
+  note         String? // e.g. "Manual top-up — bank transfer ref 1234"
+  createdAt    DateTime @default(now())
+
+  @@index([operatorId, createdAt])
 }
 
 // ── Bookings ──

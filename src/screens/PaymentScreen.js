@@ -48,7 +48,8 @@ export default function PaymentScreen({ navigation }) {
         </Card>
 
         <Text style={pm.disclaimer}>
-          Payment integration is not yet live — this is a demo confirmation. No charge has been made.
+          Pay the total to the ambulance crew directly in cash when the trip completes.
+          Nothing is charged through the app — in-app card payment is coming soon.
         </Text>
       </ScrollView>
       <View style={pm.bar}>

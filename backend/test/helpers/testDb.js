@@ -12,6 +12,7 @@ export async function resetDb() {
     throw new Error("resetDb() refused: DATABASE_URL does not point at lifeline_test");
   }
   await prisma.trackingEvent.deleteMany();
+  await prisma.walletTransaction.deleteMany();
   await prisma.rating.deleteMany();
   await prisma.bookingOffer.deleteMany();
   await prisma.booking.deleteMany();
@@ -49,6 +50,10 @@ export async function seedFixtureOperators() {
         perKmRate: 5,
         vettingStatus: "approved",
         online: true,
+        // Wallet gating (2026-07-31): operators need float to receive offers.
+        // Fixtures start with plenty so pre-wallet tests behave unchanged;
+        // wallet tests set balances explicitly.
+        walletBalance: 500,
       },
     });
   }

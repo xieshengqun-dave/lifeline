@@ -53,6 +53,9 @@ export const createOperator = (data) => req("/api/admin/operators", { method: "P
 export const updateOperator = (id, data) => req(`/api/admin/operators/${id}`, { method: "PUT", body: JSON.stringify(data) });
 export const approveOperator = (id) => req(`/api/admin/operators/${id}/approve`, { method: "POST" });
 export const suspendOperator = (id) => req(`/api/admin/operators/${id}/suspend`, { method: "POST" });
+export const getOperatorWallet = (id) => req(`/api/admin/operators/${id}/wallet`);
+export const applyWalletTransaction = (id, data) =>
+  req(`/api/admin/operators/${id}/wallet`, { method: "POST", body: JSON.stringify(data) });
 export const getBookings = () => req("/api/admin/bookings");
 export const getPlatformFeeSetting = () => req("/api/admin/settings/platform-fee");
 export const updatePlatformFeeSetting = (p) => req("/api/admin/settings/platform-fee", { method: "PUT", body: JSON.stringify(p) });
