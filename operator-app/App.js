@@ -72,6 +72,12 @@ export default function App() {
     disconnectSocket();
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await SecureStore.deleteItemAsync(USER_KEY);
+    // initialRouteName only applies at first mount — without an explicit
+    // reset the user stays on Home looking signed-in (the "sign out does
+    // nothing" bug).
+    if (navigationRef.isReady()) {
+      navigationRef.reset({ index: 0, routes: [{ name: "Login" }] });
+    }
   }, []);
 
   const signIn = React.useCallback(async (email, password) => {

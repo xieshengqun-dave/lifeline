@@ -34,7 +34,9 @@ export default function HomeScreen({ navigation }) {
         setLoading(true);
         try {
           const [me, list, fleetRes, walletRes] = await Promise.all([
-            getOperatorMe(), getOperatorBookings(), getOperatorFleet(), getOperatorWallet(),
+            getOperatorMe(), getOperatorBookings(), getOperatorFleet(),
+            // Wallet failing must not blank the whole Home screen.
+            getOperatorWallet().catch(() => ({ balance: null })),
           ]);
           if (cancelled) return;
           setOnline(me.online);
