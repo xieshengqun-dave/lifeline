@@ -140,7 +140,12 @@ export async function createBookingPaymentSession(booking) {
 // the payment-intent reference (stored as paymentRef so refunds work).
 export async function confirmBookingPayment(sessionId) {
   const s = requireStripe();
-  const session = await s.checkout.sessions.retrieve(sessionId);
+  let session;
+  try {
+    session = await s.checkout.sessions.retrieve(sessionId);
+  } catch {
+    return { paid: false }; // unknown/garbled session id — not a server error
+  }
   if (session.payment_status !== "paid" || session.metadata?.kind !== "booking_payment") {
     return { paid: false };
   }
@@ -199,7 +204,12 @@ export async function createTopupSession(operatorId, amountRm) {
 // then credit the wallet exactly once (ledger note carries the session id).
 export async function confirmTopup(sessionId) {
   const s = requireStripe();
-  const session = await s.checkout.sessions.retrieve(sessionId);
+  let session;
+  try {
+    session = await s.checkout.sessions.retrieve(sessionId);
+  } catch {
+    return { credited: false }; // unknown/garbled session id — not a server error
+  }
   if (session.payment_status !== "paid" || session.metadata?.kind !== "wallet_topup") {
     return { credited: false };
   }
