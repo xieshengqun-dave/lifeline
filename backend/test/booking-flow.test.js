@@ -41,7 +41,7 @@ test("booking critical path", async (t) => {
     const res = await client
       .post("/api/bookings")
       .set("Authorization", `Bearer ${patientToken}`)
-      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "Cash" });
+      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
 
     assert.equal(res.status, 201);
     assert.equal(res.body.status, "offered");

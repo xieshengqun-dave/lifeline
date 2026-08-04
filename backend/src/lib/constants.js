@@ -3,6 +3,9 @@
 // without updating CLAUDE.md's state machine list in the same change.
 
 export const BOOKING_STATUS = Object.freeze({
+  // Pay-first (decided 2026-08-04): prepaid bookings sit here until the
+  // payment lands — operators never see an unpaid non-cash booking.
+  PENDING_PAYMENT: "pending_payment",
   REQUESTED: "requested",
   OFFERED: "offered",
   ACCEPTED: "accepted",

@@ -56,7 +56,7 @@ const initialBooking = {
   age: "45", gender: "Male", cond: "Fully Conscious",
   oxy: "Yes", flow: "<5L", iv: "No", medication: "",
   diagnosisType: "RTA", diagnosisOther: "", specialRequest: "",
-  payMethod: "Cash — pay the crew directly",
+  payMethod: "cash", // cash | card | online — normalized API values (pay-first, 2026-08-04)
   selectedOperator: null, // normalizeOperator() shape — see src/api/mappers.js
   bookingId: null,
   bookingStatus: null,

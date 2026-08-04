@@ -103,6 +103,7 @@ router.get(
         bookingId: booking.id,
         bookingType: booking.bookingType,
         scheduledAt: booking.scheduledAt,
+        prepaid: !!booking.paidAt,
         dispatchDistanceKm: offer.dispatchDistanceKm,
         // Read straight off the booking, not re-derived from a possibly-since
         // -changed platform fee setting — booking.serviceFee/total were

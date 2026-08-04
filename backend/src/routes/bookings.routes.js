@@ -9,10 +9,12 @@ import { findEligibleOperators } from "../services/matching.js";
 import { computeFare, computeEtaMinutes } from "../services/pricing.js";
 import {
   createBookingWithFirstOffer,
+  markBookingPaidAndDispatch,
   skipOffer,
   cancelBooking,
   advanceBookingStatus,
 } from "../services/offerEngine.js";
+import { paymentsEnabled, chargeBookingCard, createBookingPaymentSession } from "../services/payment.js";
 import { assignBookingResources } from "../services/assignment.js";
 import { getPlatformFeeSetting } from "../services/settings.js";
 import { submitRating, getCompletedTripCounts } from "../services/rating.js";
@@ -55,7 +57,11 @@ const createBookingSchema = z.object({
   pickup: locationSchema,
   destination: locationSchema,
   patient: patientSchema,
-  paymentMethod: z.string().min(1),
+  // Pay-first (2026-08-04): cash dispatches immediately (emergencies only —
+  // enforced in the handler when payments are configured); card charges the
+  // linked card instantly; online returns a hosted-Checkout URL and the
+  // booking waits in pending_payment until it's paid.
+  paymentMethod: z.enum(["cash", "card", "online"]),
   bookingType: z.enum(["emergency", "transfer"]).default("emergency"),
   scheduledAt: z
     .string()
@@ -136,6 +142,17 @@ router.post(
     const { operatorId, pickup, destination, patient, paymentMethod, bookingType, scheduledAt } = req.body;
     const distanceKm = haversineKm(pickup.lat, pickup.lng, destination.lat, destination.lng);
 
+    // Pay-first rules (2026-08-04). Cash = emergencies only — but ONLY
+    // enforced when payments are configured; a dev/test server without a
+    // Stripe key honestly can't take prepayment, so cash stays open there.
+    const prepaid = paymentMethod !== "cash";
+    if (prepaid && !paymentsEnabled()) {
+      throw new HttpError(501, "payments_not_configured", "Online payment is not configured on this server");
+    }
+    if (paymentMethod === "cash" && bookingType !== "emergency" && paymentsEnabled()) {
+      throw new HttpError(400, "cash_emergency_only", "Cash is only available for emergency bookings — transfers are paid in-app");
+    }
+
     const booking = await createBookingWithFirstOffer({
       userId: req.userId,
       chosenOperatorId: operatorId,
@@ -146,23 +163,44 @@ router.post(
       paymentMethod,
       bookingType,
       scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      prepaid,
     });
 
+    // Prepaid: settle payment before anything is dispatched.
+    let finalBooking = booking;
+    let checkoutUrl = null;
+    if (prepaid && booking.status === "pending_payment") {
+      if (paymentMethod === "card") {
+        const charge = await chargeBookingCard(booking);
+        if (charge.charged) {
+          finalBooking = await markBookingPaidAndDispatch(booking.id, charge.paymentIntentId);
+        } else {
+          // Linked card failed — hand back a checkout URL so the patient can
+          // pay another way instead of dying here.
+          ({ url: checkoutUrl } = await createBookingPaymentSession(booking));
+        }
+      } else {
+        ({ url: checkoutUrl } = await createBookingPaymentSession(booking));
+      }
+    }
+
     const currentOffer = await prisma.bookingOffer.findFirst({
-      where: { bookingId: booking.id, status: OFFER_STATUS.PENDING },
+      where: { bookingId: finalBooking.id, status: OFFER_STATUS.PENDING },
       orderBy: { sequence: "desc" },
     });
 
     res.status(201).json({
-      id: booking.id,
-      status: booking.status,
-      bookingType: booking.bookingType,
-      scheduledAt: booking.scheduledAt,
-      operatorId: booking.operatorId,
-      distanceKm: booking.distanceKm,
-      subtotal: booking.subtotal,
-      serviceFee: booking.serviceFee,
-      total: booking.total,
+      id: finalBooking.id,
+      status: finalBooking.status,
+      bookingType: finalBooking.bookingType,
+      scheduledAt: finalBooking.scheduledAt,
+      operatorId: finalBooking.operatorId,
+      distanceKm: finalBooking.distanceKm,
+      subtotal: finalBooking.subtotal,
+      serviceFee: finalBooking.serviceFee,
+      total: finalBooking.total,
+      paymentStatus: finalBooking.paymentStatus,
+      checkoutUrl,
       currentOffer: currentOffer
         ? { id: currentOffer.id, offeredAt: currentOffer.offeredAt, expiresAt: currentOffer.expiresAt }
         : null,

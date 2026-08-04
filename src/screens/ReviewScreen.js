@@ -11,11 +11,11 @@ import Header from "./_Header";
 import Card from "../components/ui/Card";
 import GradientButton from "../components/ui/GradientButton";
 
-// Grab agent model (decided 2026-07-31): cash goes straight to the crew;
-// card trips charge the patient's linked card (Stripe vault — we never see
-// card numbers) when the trip completes. Linking happens on Stripe's hosted
-// page opened in the browser.
-const CASH_METHOD = "Cash — pay the crew directly";
+// Pay-first (decided 2026-08-04): the booking is paid BEFORE any operator is
+// contacted. Methods sent to the API: "cash" (emergencies only — pay the
+// crew, dispatches immediately), "card" (linked card charged instantly),
+// "online" (hosted payment page — card/FPX now, DuitNow/TNG with the
+// upcoming Malaysian gateway). Cash disappears for transfers/scheduled.
 
 // Payment method is chosen here, before the booking is created — a real
 // backend constraint (POST /bookings requires paymentMethod in the same
@@ -50,7 +50,26 @@ export default function ReviewScreen({ navigation }) {
     return () => { dead = true; unsub(); };
   }, [navigation]);
 
-  const usingCard = booking.payMethod === "Card";
+  const cashAllowed = booking.bookingType !== "transfer" && !booking.scheduledAt;
+  const method = booking.payMethod;
+
+  // If the current selection became invalid (e.g. cash preselected but this
+  // is a transfer, or card selected with no card linked), pick the best
+  // available method automatically.
+  React.useEffect(() => {
+    if (!payments.enabled) {
+      if (method !== "cash") update({ payMethod: "cash" });
+      return;
+    }
+    const valid =
+      (method === "cash" && cashAllowed) ||
+      (method === "card" && payments.card) ||
+      method === "online";
+    if (!valid) {
+      update({ payMethod: cashAllowed ? "cash" : payments.card ? "card" : "online" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payments, cashAllowed, method]);
 
   async function linkCard() {
     setLinking(true);
@@ -68,6 +87,16 @@ export default function ReviewScreen({ navigation }) {
     <View style={rv.row}><Text style={rv.l}>{l}</Text><Text style={rv.r}>{r}</Text></View>
   );
 
+  const MethodRow = ({ icon, label, selected, onPress }) => (
+    <TouchableOpacity style={rv.methodRow} onPress={onPress}>
+      <View style={[rv.methodIconTile, selected && { backgroundColor: C.tealSoft }]}>
+        <Ionicons name={icon} size={17} color={selected ? C.tealDeep : C.faint} />
+      </View>
+      <Text style={rv.methodName}>{label}</Text>
+      <View style={[rv.radio, selected && rv.radioOn]}>{selected && <View style={rv.dot} />}</View>
+    </TouchableOpacity>
+  );
+
   async function confirmAndBook() {
     setSubmitting(true);
     setError(null);
@@ -81,8 +110,21 @@ export default function ReviewScreen({ navigation }) {
         bookingType: booking.bookingType || "emergency",
         scheduledAt: booking.scheduledAt || undefined,
       });
-      // Scheduled bookings have no live offer race to watch — confirm and
-      // send the user home; the trip lives in the Trips tab until dispatch.
+      // Hosted-payment path: open Stripe's page and let Waiting watch for
+      // the payment to land (it polls + listens on the socket).
+      if (res.checkoutUrl) {
+        update({
+          bookingId: res.id,
+          bookingStatus: res.status,
+          currentOfferExpiresAt: null,
+          currentOfferOfferedAt: null,
+        });
+        Linking.openURL(res.checkoutUrl);
+        navigation.replace("Waiting");
+        return;
+      }
+      // Scheduled + already settled (paid instantly or cash-dev): nothing to
+      // watch — the dispatch happens closer to pickup.
       if (res.scheduledAt && !res.currentOffer) {
         const when = new Date(res.scheduledAt);
         Alert.alert(
@@ -138,36 +180,48 @@ export default function ReviewScreen({ navigation }) {
 
         <Text style={rv.sectOutside}>PAYMENT METHOD</Text>
         <Card noPad style={{ marginBottom: spacing.cardGap }}>
-          <TouchableOpacity style={rv.methodRow} onPress={() => update({ payMethod: CASH_METHOD })}>
-            <View style={[rv.methodIconTile, !usingCard && { backgroundColor: C.tealSoft }]}>
-              <Ionicons name="cash-outline" size={17} color={!usingCard ? C.tealDeep : C.faint} />
-            </View>
-            <Text style={rv.methodName}>{CASH_METHOD}</Text>
-            <View style={[rv.radio, !usingCard && rv.radioOn]}>{!usingCard && <View style={rv.dot} />}</View>
-          </TouchableOpacity>
-
-          {payments.enabled && payments.card ? (
-            <TouchableOpacity style={[rv.methodRow, { borderBottomWidth: 0 }]} onPress={() => update({ payMethod: "Card" })}>
-              <View style={[rv.methodIconTile, usingCard && { backgroundColor: C.tealSoft }]}>
-                <Ionicons name="card-outline" size={17} color={usingCard ? C.tealDeep : C.faint} />
-              </View>
-              <Text style={rv.methodName}>
-                {payments.card.brand.toUpperCase()} •••• {payments.card.last4} — charged when the trip completes
-              </Text>
-              <View style={[rv.radio, usingCard && rv.radioOn]}>{usingCard && <View style={rv.dot} />}</View>
-            </TouchableOpacity>
-          ) : payments.enabled ? (
+          {(cashAllowed || !payments.enabled) && (
+            <MethodRow
+              icon="cash-outline"
+              label="Cash — pay the crew directly"
+              selected={method === "cash"}
+              onPress={() => update({ payMethod: "cash" })}
+            />
+          )}
+          {payments.enabled && payments.card && (
+            <MethodRow
+              icon="card-outline"
+              label={`${payments.card.brand.toUpperCase()} •••• ${payments.card.last4} — pay now`}
+              selected={method === "card"}
+              onPress={() => update({ payMethod: "card" })}
+            />
+          )}
+          {payments.enabled && (
+            <MethodRow
+              icon="globe-outline"
+              label="Pay online — card / FPX"
+              selected={method === "online"}
+              onPress={() => update({ payMethod: "online" })}
+            />
+          )}
+          {payments.enabled && !payments.card && (
             <TouchableOpacity style={[rv.methodRow, { borderBottomWidth: 0 }]} onPress={linkCard} disabled={linking}>
               <View style={rv.methodIconTile}>
                 <Ionicons name="add-circle-outline" size={17} color={C.tealDeep} />
               </View>
               <Text style={[rv.methodName, { color: C.tealDeep }]}>
-                {linking ? "Opening card setup…" : "Link a card to pay in-app"}
+                {linking ? "Opening card setup…" : "Link a card for one-tap payment"}
               </Text>
               <Ionicons name="open-outline" size={15} color={C.faint} />
             </TouchableOpacity>
-          ) : null}
+          )}
         </Card>
+        {payments.enabled && method !== "cash" && (
+          <Text style={rv.payNote}>
+            Payment is taken first — we only contact operators once it's confirmed. Full
+            automatic refund if no operator can take your trip.
+          </Text>
+        )}
 
         <Card style={{ marginBottom: spacing.cardGap }}>
           <Text style={rv.sect}>FARE ESTIMATE</Text>
@@ -202,4 +256,5 @@ const rv = StyleSheet.create({
   totalRow: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: C.line, marginTop: 8, paddingTop: 10 },
   totalK: { ...type.cardTitle, fontSize: 14, color: C.ink }, totalV: { ...type.price, fontSize: 18, color: C.tealDeep },
   errorT: { fontSize: 12.5, color: C.red, marginTop: 4, marginBottom: 10, textAlign: "center" },
+  payNote: { ...type.body, fontSize: 11.5, color: C.faint, lineHeight: 16, marginBottom: spacing.cardGap, marginHorizontal: 4 },
 });

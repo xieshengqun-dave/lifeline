@@ -25,7 +25,7 @@ test("operator wallet: fee deduction, gating, admin ledger", async (t) => {
     const booked = await client
       .post("/api/bookings")
       .set("Authorization", `Bearer ${patientToken}`)
-      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "Cash" });
+      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
     const offers = await client.get("/api/operator/requests").set("Authorization", `Bearer ${opToken}`);
     const offer = offers.body.find((o) => o.bookingId === booked.body.id);
     await client.post(`/api/operator/offers/${offer.offerId}/accept`).set("Authorization", `Bearer ${opToken}`);
@@ -72,7 +72,7 @@ test("operator wallet: fee deduction, gating, admin ledger", async (t) => {
     const booked = await client
       .post("/api/bookings")
       .set("Authorization", `Bearer ${patientToken}`)
-      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "Cash" });
+      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
     assert.equal(booked.body.operatorId, operators.B.id, "offer cascaded to the next affordable operator");
     await client.post(`/api/bookings/${booked.body.id}/cancel`).set("Authorization", `Bearer ${patientToken}`);
   });

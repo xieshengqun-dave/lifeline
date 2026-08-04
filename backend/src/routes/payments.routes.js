@@ -10,7 +10,9 @@ import {
   unlinkCard,
   createTopupSession,
   confirmTopup,
+  confirmBookingPayment,
 } from "../services/payment.js";
+import { markBookingPaidAndDispatch } from "../services/offerEngine.js";
 
 const router = Router();
 
@@ -47,6 +49,24 @@ router.delete(
   asyncHandler(async (req, res) => {
     await unlinkCard(req.userId);
     res.json({ ok: true });
+  })
+);
+
+// ── Pay-first booking payment: hosted-Checkout success lands here. Verify
+// with Stripe, then mark paid + start the operator race. Safe to reload —
+// markBookingPaidAndDispatch is idempotent. ──
+router.get(
+  "/booking/confirm",
+  asyncHandler(async (req, res) => {
+    const result = await confirmBookingPayment(String(req.query.session_id || ""));
+    if (!result.paid) {
+      res.status(400).send(landingPage("Payment not completed", "Return to the Lifeline app to try again."));
+      return;
+    }
+    await markBookingPaidAndDispatch(result.bookingId, result.paymentRef);
+    res.send(
+      landingPage("Payment received ✓", "We're finding your ambulance now — return to the Lifeline app.")
+    );
   })
 );
 

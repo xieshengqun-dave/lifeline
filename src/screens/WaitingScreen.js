@@ -44,6 +44,7 @@ export default function WaitingScreen({ navigation }) {
   const [remainingSeconds, setRemainingSeconds] = React.useState(0);
   const [transientNotice, setTransientNotice] = React.useState(null);
   const [actionInFlight, setActionInFlight] = React.useState(false);
+  const [schedAt, setSchedAt] = React.useState(null);
 
   const bookingId = booking.bookingId;
   const noticeTimerRef = React.useRef(null);
@@ -65,6 +66,7 @@ export default function WaitingScreen({ navigation }) {
         if (op) update({ selectedOperator: op });
         setOperator(op);
         setStatus(b.status);
+        setSchedAt(b.scheduledAt || null);
         if (b.status === "accepted") {
           navigation.replace("Payment");
         }
@@ -91,6 +93,14 @@ export default function WaitingScreen({ navigation }) {
         setStatus(payload.status);
         if (payload.status === "accepted") {
           navigation.replace("Payment");
+        } else if (payload.status === "requested" && payload.reason === "paid" && schedAt) {
+          // Prepaid scheduled booking: payment landed, dispatch happens
+          // closer to pickup — nothing to watch here.
+          Alert.alert(
+            "Paid & scheduled",
+            "Payment received. We'll start finding your operator about 45 minutes before pickup — track it in the Trips tab.",
+            [{ text: "OK", onPress: goHome }]
+          );
         } else if (payload.status === "declined") {
           const notice = NOTICE_COPY[payload.reason];
           setTransientNotice(notice || null);
@@ -119,6 +129,33 @@ export default function WaitingScreen({ navigation }) {
 
   const totalWindowSeconds = offeredAt && expiresAt ? Math.max(1, (expiresAt - offeredAt) / 1000) : OFFER_WINDOW_FALLBACK;
   const progress = remainingSeconds / totalWindowSeconds;
+
+  // While waiting for an external payment (hosted Checkout in the browser),
+  // poll as a safety net alongside the socket — the user may return from the
+  // browser after any missed event.
+  React.useEffect(() => {
+    if (initializing || status !== "pending_payment") return;
+    const id = setInterval(async () => {
+      try {
+        const b = await getBooking(bookingId);
+        if (b.status !== "pending_payment") {
+          setStatus(b.status);
+          if (b.status === "accepted") navigation.replace("Payment");
+          else if (b.status === "requested" && b.scheduledAt) {
+            Alert.alert(
+              "Paid & scheduled",
+              "Payment received. We'll start finding your operator about 45 minutes before pickup — track it in the Trips tab.",
+              [{ text: "OK", onPress: goHome }]
+            );
+          } else if (b.status === "cancelled") {
+            Alert.alert("Booking cancelled", "The payment wasn't completed in time.", [{ text: "OK", onPress: goHome }]);
+          }
+        }
+      } catch {}
+    }, 4000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initializing, status, bookingId]);
 
   function confirmCancel() {
     Alert.alert("Cancel request?", "Are you sure you want to cancel this ambulance request?", [
@@ -187,6 +224,27 @@ export default function WaitingScreen({ navigation }) {
     );
   }
 
+  if (status === "pending_payment") {
+    return (
+      <View style={{ flex: 1 }}>
+        <LinearGradient colors={gradients.darkHeroWaiting} style={StyleSheet.absoluteFill} />
+        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+          <View style={[w.body, { justifyContent: "center" }]}>
+            <Ionicons name="card-outline" size={44} color="#7fffdc" />
+            <Text style={[w.title, { marginTop: 16 }]}>Complete your payment</Text>
+            <Text style={w.payHint}>
+              Finish paying in the browser tab that just opened. We'll start finding your
+              ambulance the moment the payment lands — this screen updates automatically.
+            </Text>
+            <TouchableOpacity style={w.cancelBtn} onPress={confirmCancel} disabled={actionInFlight}>
+              <Text style={w.cancelBtnT}>Cancel booking</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <LinearGradient colors={gradients.darkHeroWaiting} style={StyleSheet.absoluteFill} />
@@ -245,6 +303,7 @@ const w = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   body: { flex: 1, padding: spacing.screenPad, alignItems: "center" },
   overline: { ...type.caption, fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 20 },
+  payHint: { ...type.body, fontSize: 13, color: "rgba(255,255,255,0.75)", textAlign: "center", lineHeight: 19, marginTop: 10, marginBottom: 24, paddingHorizontal: 10 },
   title: { ...type.screenTitle, fontSize: 22, color: "#fff", textAlign: "center", marginTop: 8, marginBottom: 24 },
   notice: { backgroundColor: "rgba(255,255,255,0.14)", borderRadius: radius.card, padding: 12, marginTop: 20, width: "100%" },
   noticeT: { ...type.body, color: "#fff", fontSize: 12.5, textAlign: "center" },

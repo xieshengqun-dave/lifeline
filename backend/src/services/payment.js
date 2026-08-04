@@ -105,6 +105,69 @@ export async function chargeBookingCard(booking) {
   }
 }
 
+// ── Pay-first (decided 2026-08-04): prepaid bookings are paid BEFORE any
+// operator sees them. Two payment paths share the same outcome:
+//  a) linked card → charged off-session instantly at booking time
+//     (chargeBookingCard above, called by the booking route);
+//  b) hosted Checkout (card/FPX — DuitNow/TNG arrive with the future local
+//     provider) → confirmBookingPayment verifies and triggers dispatch.
+
+export async function createBookingPaymentSession(booking) {
+  const s = requireStripe();
+  const session = await s.checkout.sessions.create({
+    mode: "payment",
+    currency: CURRENCY,
+    line_items: [
+      {
+        price_data: {
+          currency: CURRENCY,
+          product_data: {
+            name: `Lifeline ambulance — ${booking.pickupName} → ${booking.destinationName}`,
+          },
+          unit_amount: toCents(booking.total),
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: { bookingId: booking.id, kind: "booking_payment" },
+    success_url: `${config.publicApiUrl}/api/payments/booking/confirm?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${config.publicApiUrl}/api/payments/return?outcome=cancelled`,
+  });
+  return { url: session.url };
+}
+
+// Verifies a booking Checkout session with Stripe. Returns the bookingId and
+// the payment-intent reference (stored as paymentRef so refunds work).
+export async function confirmBookingPayment(sessionId) {
+  const s = requireStripe();
+  const session = await s.checkout.sessions.retrieve(sessionId);
+  if (session.payment_status !== "paid" || session.metadata?.kind !== "booking_payment") {
+    return { paid: false };
+  }
+  return {
+    paid: true,
+    bookingId: session.metadata.bookingId,
+    paymentRef: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
+    amountRm: session.amount_total / 100,
+  };
+}
+
+// Full refund of a prepaid booking (no-operator expiry / cancellation).
+// Caller is responsible for guarding idempotency via paymentStatus/refundedAt
+// before calling; this just executes the provider refund.
+export async function refundBookingPayment(booking) {
+  const s = requireStripe();
+  if (!booking.paymentRef) return { refunded: false, reason: "no_payment_ref" };
+  try {
+    await s.refunds.create({ payment_intent: booking.paymentRef });
+    return { refunded: true };
+  } catch (err) {
+    // Already-refunded intents are success from our point of view.
+    if (err.code === "charge_already_refunded") return { refunded: true };
+    return { refunded: false, reason: err.code || err.message };
+  }
+}
+
 // ── Operator: self-serve wallet top-up via hosted Checkout (payment mode).
 // Credited by confirmTopup below, idempotent per Checkout session. ──
 export async function createTopupSession(operatorId, amountRm) {

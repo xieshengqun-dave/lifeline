@@ -164,8 +164,11 @@ model Booking {
   serviceFee      Float?
   total           Float?
   paymentMethod   String?
-  paymentStatus   String  @default("pending") // pending | paid | failed
-  paymentProvider String? // null until a real provider is integrated — see services/payment.js
+  paymentStatus   String  @default("pending") // pending | paid | failed | refunded
+  paymentProvider String? // e.g. "stripe" — see services/payment.js
+  paymentRef      String? // provider reference (payment intent / checkout session) — needed for refunds
+  paidAt          DateTime?
+  refundedAt      DateTime?
 
   // What kind of trip this is — emergency (default) | transfer
   // (non-emergency inter-facility / planned medical transport).

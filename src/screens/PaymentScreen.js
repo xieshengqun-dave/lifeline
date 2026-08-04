@@ -48,9 +48,9 @@ export default function PaymentScreen({ navigation }) {
         </Card>
 
         <Text style={pm.disclaimer}>
-          {booking.payMethod === "Card"
-            ? "Your linked card will be charged automatically when the trip completes. If the charge fails, pay the crew in cash."
-            : "Pay the total to the ambulance crew directly in cash when the trip completes. Nothing is charged through the app."}
+          {booking.payMethod === "cash"
+            ? "Pay the total to the ambulance crew directly in cash when the trip completes. Nothing is charged through the app."
+            : "Already paid in-app — nothing to pay the crew. A full refund is automatic if the trip can't go ahead."}
         </Text>
       </ScrollView>
       <View style={pm.bar}>

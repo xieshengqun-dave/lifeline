@@ -8,7 +8,7 @@ async function bookAndComplete(patientToken, operatorEmail) {
   const bookRes = await client
     .post("/api/bookings")
     .set("Authorization", `Bearer ${patientToken}`)
-    .send({ operatorId: (await prisma.operator.findUnique({ where: { email: operatorEmail } })).id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "Cash" });
+    .send({ operatorId: (await prisma.operator.findUnique({ where: { email: operatorEmail } })).id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
   const bookingId = bookRes.body.id;
   const offerId = bookRes.body.currentOffer.id;
 
@@ -29,7 +29,7 @@ test("post-trip rating", async (t) => {
     const bookRes = await client
       .post("/api/bookings")
       .set("Authorization", `Bearer ${patientToken}`)
-      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "Cash" });
+      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
 
     const res = await client
       .post(`/api/bookings/${bookRes.body.id}/rating`)

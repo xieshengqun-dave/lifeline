@@ -229,6 +229,48 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-08-04 — Pay-first: patients pay BEFORE dispatch (user decision)
+- **Flow redesign decided by the user**: "patient pay then only order push to
+  operator." Locked sub-decisions: **cash survives for emergencies only** (transfers/
+  scheduled must prepay; also cash naturally can't prepay), and the **prepaid cascade
+  honors the paid price** — the offer carries the locked amount down the operator
+  list; whoever accepts earns exactly that subtotal.
+- **State machine gained `pending_payment`** (CLAUDE.md locked list updated in the
+  same change). paymentMethod is now a strict enum: cash | card | online.
+  New Booking fields: paymentRef (provider intent id — enables refunds), paidAt,
+  refundedAt; paymentStatus adds "refunded".
+- **Mechanics, all live-verified against Stripe test mode**: cash-emergency
+  dispatches immediately (unchanged agent model, wallet fee on completion); card =
+  linked card charged instantly at booking → dispatch; online = hosted Checkout
+  (card/FPX; DuitNow QR/TNG arrive with the future Malaysian gateway — see
+  2026-08-04 gateway note below) → confirm endpoint verifies with Stripe →
+  dispatch. Unpaid bookings are invisible to operators, auto-cancel after 15 min
+  (sweep). Prepaid trips skip wallet fee-gating (fee comes from patient money) and
+  credit trip_earning on completion. **Automatic full refunds**: no-operators
+  expiry, patient cancel (v1 policy: full refund at any pre-completion stage —
+  revisit with operators), and the nasty one — payment landing on an
+  already-cancelled booking → recorded then refunded (verified through a REAL
+  browser checkout on a cancelled booking: paymentStatus=refunded, Stripe
+  confirmed). Refund failures are loudly logged for manual reconciliation.
+- Apps: Review builds the method list dynamically (cash hidden for transfers/
+  scheduled; "pay now" linked card; "pay online"; link-card action); Waiting has a
+  pending_payment state (socket + 4s poll safety net, handles paid-scheduled and
+  payment-timeout); receipt copy per method; operator request cards show a PREPAID
+  pill + "credited to your wallet" payout note.
+- Suite green (5 files) with tests normalized to the new enum. Fixture note:
+  payments are disabled in .env.test (no Stripe key) → cash stays open for all
+  booking types there (the cash-emergency-only rule is enforced only when payments
+  are configured — documented in the route).
+- **Payment gateway decision (same day, earlier)**: TNG + DuitNow QR are
+  must-haves → Stripe can't be the production gateway. Shortlist: **Fiuu**
+  (primary — full coverage incl. tokenized recurring cards; sales-quote
+  onboarding, user to contact) vs **HitPay** (self-serve fallback; verify card
+  recurring). Stripe stays as the working reference implementation behind
+  services/payment.js until the chosen sandbox lands. SSM business registration
+  is the universal go-live prerequisite.
+- **Next**: rebuild both APKs (done same session — see CREDENTIALS), user runs the
+  pay-first demo on phones; user contacts Fiuu for sandbox + quote.
+
 ### 2026-07-31 — Operator wallet (Grab agent model): ledger, fee deduction, gating
 - **Payment model decided by the user** (the CLAUDE.md payments flag, now resolved):
   patients pay operators DIRECTLY (cash now, linked card via Stripe later) — the

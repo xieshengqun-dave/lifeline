@@ -72,9 +72,10 @@ Three sides to the product:
 
 - **Brand colours:** teal `#0E8C8C`, navy `#0F172E`. Use tokens from `src/theme/theme.js`,
   never hardcode hex in screens.
-- **Booking status state machine:** requested → offered → accepted → enroute → arrived →
-  onboard → completed. Plus: cancelled, declined, expired. Never invent new statuses
-  without updating this list and the backend enum together.
+- **Booking status state machine:** pending_payment (prepaid bookings only, before
+  dispatch) → requested → offered → accepted → enroute → arrived → onboard →
+  completed. Plus: cancelled, declined, expired. Never invent new statuses without
+  updating this list and the backend enum together.
 - Keep secrets in `.env`. Never commit them. `.env.example` documents what's needed.
 - This is **emergency + medical software.** Be conservative: validate inputs, handle the
   "no operators" and "operator unreachable" cases explicitly, never silently swallow errors

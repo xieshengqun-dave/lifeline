@@ -118,6 +118,11 @@ export default function IncomingRequestsScreen({ navigation }) {
                         <Text style={r.transferPillT}>TRANSFER</Text>
                       </View>
                     )}
+                    {offer.prepaid && (
+                      <View style={[r.transferPill, { backgroundColor: "rgba(127,255,220,0.2)" }]}>
+                        <Text style={[r.transferPillT, { color: "#7fffdc" }]}>PREPAID</Text>
+                      </View>
+                    )}
                     <Text style={r.countdown}>{expired ? "Expired" : `0:${ss}`}</Text>
                   </View>
                   <View style={r.progressTrack}>
@@ -147,7 +152,11 @@ export default function IncomingRequestsScreen({ navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={r.payoutN}>RM {offer.price.subtotal.toFixed(2)}</Text>
-                      <Text style={r.payoutSub}>You earn this in full — platform fee (RM {offer.price.serviceFee.toFixed(2)}) is added on top for the patient.</Text>
+                      <Text style={r.payoutSub}>
+                        {offer.prepaid
+                          ? "Patient already paid — this amount is credited to your wallet when the trip completes."
+                          : `You earn this in full — platform fee (RM ${offer.price.serviceFee.toFixed(2)}) is added on top for the patient.`}
+                      </Text>
                     </View>
                   </View>
 

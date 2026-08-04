@@ -13,7 +13,7 @@ test("cancel while offered", async () => {
   const bookRes = await client
     .post("/api/bookings")
     .set("Authorization", `Bearer ${patientToken}`)
-    .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "Cash" });
+    .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
   const bookingId = bookRes.body.id;
   const offerId = bookRes.body.currentOffer.id;
 
@@ -51,7 +51,7 @@ test("no operators left -> expired (999 fallback), no further offers created", a
       operatorId: "does-not-exist",
       pickup: TEST_PICKUP,
       destination: TEST_DESTINATION,
-      paymentMethod: "Cash",
+      paymentMethod: "cash",
     });
 
   assert.equal(bookRes.status, 201);
