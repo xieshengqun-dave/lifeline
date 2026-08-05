@@ -58,6 +58,7 @@ export const createBooking = (p) => req("/api/bookings", { method: "POST", body:
 export const skipBooking = (id) => req(`/api/bookings/${id}/skip`, { method: "POST" });
 export const cancelBooking = (id) => req(`/api/bookings/${id}/cancel`, { method: "POST" });
 export const getMyBookings = () => req("/api/bookings");
+export const getActivityFeed = () => req("/api/bookings/activity/feed");
 export const getOverviewStats = () => req("/api/stats/overview");
 export const savePushToken = (pushToken) => req("/api/auth/push-token", { method: "POST", body: JSON.stringify({ pushToken }) });
 export const getPaymentsStatus = () => req("/api/payments/status");

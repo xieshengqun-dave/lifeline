@@ -226,6 +226,26 @@ router.post(
   })
 );
 
+// Patient's activity feed: the tracking events of all their bookings,
+// newest first — real timeline data (payment, offers, acceptance, trip
+// progress, refunds), nothing synthesized. Defined before "/:id" for
+// clarity, though the two-segment path can't collide with it.
+router.get(
+  "/activity/feed",
+  requirePatientAuth,
+  asyncHandler(async (req, res) => {
+    const events = await prisma.trackingEvent.findMany({
+      where: { booking: { userId: req.userId } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        booking: { select: { id: true, pickupName: true, destinationName: true } },
+      },
+    });
+    res.json(events);
+  })
+);
+
 // Patient's own trip history, newest first. Lean select — no patient
 // snapshot fields needed for a list, and never the operator relation
 // without an explicit safe-field select.
