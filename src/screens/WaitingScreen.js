@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, BackHandler } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, BackHandler, AppState } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -134,41 +134,53 @@ export default function WaitingScreen({ navigation }) {
   const totalWindowSeconds = offeredAt && expiresAt ? Math.max(1, (expiresAt - offeredAt) / 1000) : OFFER_WINDOW_FALLBACK;
   const progress = remainingSeconds / totalWindowSeconds;
 
-  // While waiting for an external payment (hosted Checkout in the browser),
-  // poll as a safety net alongside the socket — the user may return from the
-  // browser after any missed event.
-  React.useEffect(() => {
-    if (initializing || status !== "pending_payment") return;
-    const id = setInterval(async () => {
-      try {
-        const b = await getBooking(bookingId);
-        if (b.status !== "pending_payment") {
-          setStatus(b.status);
-          const op = fromBookingSnapshot(b);
-          if (op) {
-            update({ selectedOperator: op });
-            setOperator(op);
-          }
-          if (b.currentOffer) {
-            setExpiresAt(new Date(b.currentOffer.expiresAt).getTime());
-            setOfferedAt(new Date(b.currentOffer.offeredAt).getTime());
-          }
-          if (b.status === "accepted") navigation.replace("Payment");
-          else if (b.status === "requested" && b.scheduledAt) {
-            Alert.alert(
-              "Paid & scheduled",
-              "Payment received. We'll start finding your operator about 45 minutes before pickup — track it in the Trips tab.",
-              [{ text: "OK", onPress: goHome }]
-            );
-          } else if (b.status === "cancelled") {
-            Alert.alert("Booking cancelled", "The payment wasn't completed in time.", [{ text: "OK", onPress: goHome }]);
-          }
+  // Server-sync safety net for the ENTIRE waiting lifetime, not just the
+  // unpaid phase. Sockets miss events whenever Android backgrounds the app
+  // (paying in the browser is the guaranteed case) — and "accepted" has no
+  // follow-up event, so a missed one would strand this screen forever.
+  const syncFromServer = React.useCallback(async () => {
+    try {
+      const b = await getBooking(bookingId);
+      const op = fromBookingSnapshot(b);
+      if (op) {
+        update({ selectedOperator: op });
+        setOperator(op);
+      }
+      if (b.currentOffer) {
+        setExpiresAt(new Date(b.currentOffer.expiresAt).getTime());
+        setOfferedAt(new Date(b.currentOffer.offeredAt).getTime());
+      }
+      setStatus((prev) => {
+        if (b.status === prev) return prev;
+        if (b.status === "accepted") navigation.replace("Payment");
+        else if (b.status === "requested" && b.scheduledAt && prev === "pending_payment") {
+          Alert.alert(
+            "Paid & scheduled",
+            "Payment received. We'll start finding your operator about 45 minutes before pickup — track it in the Trips tab.",
+            [{ text: "OK", onPress: goHome }]
+          );
+        } else if (b.status === "cancelled" && prev === "pending_payment") {
+          Alert.alert("Booking cancelled", "The payment wasn't completed in time.", [{ text: "OK", onPress: goHome }]);
         }
-      } catch {}
-    }, 4000);
-    return () => clearInterval(id);
+        return b.status;
+      });
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initializing, status, bookingId]);
+  }, [bookingId]);
+
+  React.useEffect(() => {
+    if (initializing) return;
+    const WAITING_STATUSES = ["pending_payment", "requested", "offered", "declined"];
+    if (!WAITING_STATUSES.includes(status)) return;
+    const id = setInterval(syncFromServer, 4000);
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") syncFromServer(); // instant catch-up on return from the payment browser
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
+  }, [initializing, status, syncFromServer]);
 
   function confirmCancel() {
     Alert.alert("Cancel request?", "Are you sure you want to cancel this ambulance request?", [
