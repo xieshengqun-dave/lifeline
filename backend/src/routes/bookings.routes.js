@@ -269,7 +269,14 @@ router.get(
         crew: { select: { id: true, name: true, role: true } },
       },
     });
-    res.json(booking);
+    // Live offer timing for the Waiting countdown — a client returning from
+    // the hosted-payment browser tab missed the socket event that carried it.
+    const currentOffer = await prisma.bookingOffer.findFirst({
+      where: { bookingId: booking.id, status: OFFER_STATUS.PENDING },
+      orderBy: { sequence: "desc" },
+      select: { id: true, offeredAt: true, expiresAt: true },
+    });
+    res.json({ ...booking, currentOffer });
   })
 );
 

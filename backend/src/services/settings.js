@@ -22,6 +22,23 @@ export async function updatePlatformFeeSetting({ feeType, feeValue }) {
   return { feeType: row.feeType, feeValue: row.feeValue };
 }
 
+// Admin-set operator accept window (seconds). Falls back to the
+// OFFER_TIMEOUT_SECONDS env default when unset. Applies at offer-creation
+// time only — in-flight offers keep their persisted expiresAt.
+export async function getOfferTimeoutSeconds() {
+  const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
+  return row?.offerTimeoutSeconds ?? config.offerTimeoutSeconds;
+}
+
+export async function updateOfferTimeoutSeconds(seconds) {
+  const row = await prisma.platformSettings.upsert({
+    where: { id: SETTINGS_ID },
+    update: { offerTimeoutSeconds: seconds },
+    create: { id: SETTINGS_ID, offerTimeoutSeconds: seconds },
+  });
+  return { offerTimeoutSeconds: row.offerTimeoutSeconds };
+}
+
 export function resolveFeeAmount(setting, subtotal) {
   if (setting.feeType === PLATFORM_FEE_TYPE.PERCENT) {
     return Math.round(subtotal * (setting.feeValue / 100) * 100) / 100;

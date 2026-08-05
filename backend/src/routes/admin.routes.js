@@ -6,7 +6,12 @@ import { requireAdmin } from "../lib/auth.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { VETTING_STATUS, PLATFORM_FEE_TYPE } from "../lib/constants.js";
-import { getPlatformFeeSetting, updatePlatformFeeSetting } from "../services/settings.js";
+import {
+  getPlatformFeeSetting,
+  updatePlatformFeeSetting,
+  getOfferTimeoutSeconds,
+  updateOfferTimeoutSeconds,
+} from "../services/settings.js";
 import { getCompletedTripCounts } from "../services/rating.js";
 import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
 
@@ -138,6 +143,28 @@ router.put(
   validate(platformFeeSchema),
   asyncHandler(async (req, res) => {
     res.json(await updatePlatformFeeSetting(req.body));
+  })
+);
+
+// Operator accept window (seconds). 15s floor keeps the race winnable on a
+// phone; 300s cap keeps a dead operator from stalling an emergency cascade.
+const offerTimeoutSchema = z.object({ seconds: z.number().int().min(15).max(300) });
+
+router.get(
+  "/settings/offer-timeout",
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    res.json({ seconds: await getOfferTimeoutSeconds() });
+  })
+);
+
+router.put(
+  "/settings/offer-timeout",
+  requireAdmin,
+  validate(offerTimeoutSchema),
+  asyncHandler(async (req, res) => {
+    await updateOfferTimeoutSeconds(req.body.seconds);
+    res.json({ seconds: await getOfferTimeoutSeconds() });
   })
 );
 

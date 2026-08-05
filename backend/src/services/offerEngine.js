@@ -3,7 +3,7 @@ import { config } from "../lib/env.js";
 import { emitToBooking, emitToOperator } from "../lib/socket.js";
 import { findEligibleOperators } from "./matching.js";
 import { computeFare, computeEtaMinutes } from "./pricing.js";
-import { getPlatformFeeSetting } from "./settings.js";
+import { getPlatformFeeSetting, getOfferTimeoutSeconds } from "./settings.js";
 import { BOOKING_STATUS, OFFER_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
 import { pushToUser, pushToOperator } from "./push.js";
 import { chargeServiceFee, creditTripEarning, canCoverFee } from "./wallet.js";
@@ -86,8 +86,11 @@ async function offerToOperator(booking, candidate, sequence) {
     const feeSetting = await getPlatformFeeSetting();
     price = computeFare({ operator: candidate.operator, distanceKm: booking.distanceKm, feeSetting });
   }
+  // Admin-set accept window, read fresh per offer (BO change applies to the
+  // next offer, never rewrites in-flight expiresAt).
+  const timeoutSeconds = await getOfferTimeoutSeconds();
   const offeredAt = new Date();
-  const expiresAt = new Date(offeredAt.getTime() + config.offerTimeoutSeconds * 1000);
+  const expiresAt = new Date(offeredAt.getTime() + timeoutSeconds * 1000);
 
   const offer = await prisma.bookingOffer.create({
     data: {
@@ -112,7 +115,7 @@ async function offerToOperator(booking, candidate, sequence) {
   });
 
   await addTrackingEvent(booking.id, `Offer Sent to ${candidate.operator.name}`);
-  scheduleOfferTimeout(offer.id, config.offerTimeoutSeconds * 1000);
+  scheduleOfferTimeout(offer.id, timeoutSeconds * 1000);
 
   emitToBooking(booking.id, "booking:offer_operator", {
     bookingId: booking.id,
@@ -134,7 +137,7 @@ async function offerToOperator(booking, candidate, sequence) {
   // any operator who isn't staring at Incoming Requests.
   pushToOperator(candidate.operator.id, {
     title: booking.scheduledAt ? "Scheduled transport request" : "New ambulance request",
-    body: `${booking.pickupName} → ${booking.destinationName} · RM ${price.subtotal.toFixed(0)} · ${config.offerTimeoutSeconds}s to accept`,
+    body: `${booking.pickupName} → ${booking.destinationName} · RM ${price.subtotal.toFixed(0)} · ${timeoutSeconds}s to accept`,
     data: { kind: "offer", bookingId: booking.id, offerId: offer.id },
   });
 

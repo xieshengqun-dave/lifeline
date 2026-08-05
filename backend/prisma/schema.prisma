@@ -253,5 +253,9 @@ model PlatformSettings {
   id        Int      @id @default(1)
   feeType   String   @default("flat") // "flat" | "percent" — see PLATFORM_FEE_TYPE
   feeValue  Float    @default(15) // RM if flat, percentage points (0-100) if percent
+  // Operator accept window in seconds (admin-set). Null = fall back to the
+  // OFFER_TIMEOUT_SECONDS env default. Applies to offers created AFTER the
+  // change — in-flight offers keep their persisted expiresAt.
+  offerTimeoutSeconds Int?
   updatedAt DateTime @updatedAt
 }

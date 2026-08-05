@@ -59,3 +59,6 @@ export const applyWalletTransaction = (id, data) =>
 export const getBookings = () => req("/api/admin/bookings");
 export const getPlatformFeeSetting = () => req("/api/admin/settings/platform-fee");
 export const updatePlatformFeeSetting = (p) => req("/api/admin/settings/platform-fee", { method: "PUT", body: JSON.stringify(p) });
+export const getOfferTimeoutSetting = () => req("/api/admin/settings/offer-timeout");
+export const updateOfferTimeoutSetting = (seconds) =>
+  req("/api/admin/settings/offer-timeout", { method: "PUT", body: JSON.stringify({ seconds }) });

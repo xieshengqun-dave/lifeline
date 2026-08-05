@@ -67,6 +67,10 @@ export default function WaitingScreen({ navigation }) {
         setOperator(op);
         setStatus(b.status);
         setSchedAt(b.scheduledAt || null);
+        if (b.currentOffer) {
+          setExpiresAt(new Date(b.currentOffer.expiresAt).getTime());
+          setOfferedAt(new Date(b.currentOffer.offeredAt).getTime());
+        }
         if (b.status === "accepted") {
           navigation.replace("Payment");
         }
@@ -140,6 +144,15 @@ export default function WaitingScreen({ navigation }) {
         const b = await getBooking(bookingId);
         if (b.status !== "pending_payment") {
           setStatus(b.status);
+          const op = fromBookingSnapshot(b);
+          if (op) {
+            update({ selectedOperator: op });
+            setOperator(op);
+          }
+          if (b.currentOffer) {
+            setExpiresAt(new Date(b.currentOffer.expiresAt).getTime());
+            setOfferedAt(new Date(b.currentOffer.offeredAt).getTime());
+          }
           if (b.status === "accepted") navigation.replace("Payment");
           else if (b.status === "requested" && b.scheduledAt) {
             Alert.alert(
