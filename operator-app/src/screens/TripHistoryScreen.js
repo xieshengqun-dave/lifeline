@@ -7,6 +7,7 @@ import { C } from "../theme/theme";
 import { gradients, type, spacing, radius } from "../theme/tokens";
 import { getOperatorBookings } from "../api/client";
 import Header from "./_Header";
+import BottomTabBar from "../components/ui/BottomTabBar";
 
 const RANGES = [
   { key: "week", label: "This week", days: 7 },
@@ -53,7 +54,7 @@ export default function TripHistoryScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={["top"]}>
-      <Header title="Earnings & History" onBack={() => navigation.goBack()} />
+      <Header title="Earnings & History" />
       <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={h.band}>
         <Text style={h.bandLabel}>{rangeSpec.label}'s earnings</Text>
         <Text style={h.bandN}>RM {total.toFixed(0)}</Text>
@@ -93,6 +94,7 @@ export default function TripHistoryScreen({ navigation }) {
           ))}
         </ScrollView>
       )}
+      <BottomTabBar navigation={navigation} active="TripHistory" />
     </SafeAreaView>
   );
 }

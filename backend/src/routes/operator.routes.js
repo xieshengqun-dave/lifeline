@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireOperatorAuth } from "../lib/auth.js";
+import { getMinWalletBalance, getPlatformFeeSetting } from "../services/settings.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { acceptOffer, declineOffer } from "../services/offerEngine.js";
@@ -160,6 +161,22 @@ router.post(
   requireOperatorAuth,
   validate(availabilitySchema),
   asyncHandler(async (req, res) => {
+    // BO-set minimum float to go online (server-side — a client-only check
+    // is not sufficient, per the design spec's own note). Going OFFLINE is
+    // always allowed.
+    if (req.body.online) {
+      const [operator, minBalance] = await Promise.all([
+        prisma.operator.findUnique({ where: { id: req.operatorId }, select: { walletBalance: true } }),
+        getMinWalletBalance(),
+      ]);
+      if (minBalance > 0 && operator.walletBalance < minBalance) {
+        throw new HttpError(
+          409,
+          "min_balance",
+          `Wallet balance must be at least RM ${minBalance.toFixed(0)} to go online — top up to continue receiving requests`
+        );
+      }
+    }
     await prisma.operator.update({ where: { id: req.operatorId }, data: { online: req.body.online } });
     res.json({ online: req.body.online });
   })
@@ -169,7 +186,7 @@ router.get(
   "/wallet",
   requireOperatorAuth,
   asyncHandler(async (req, res) => {
-    const [operator, transactions] = await Promise.all([
+    const [operator, transactions, minBalance, fee] = await Promise.all([
       prisma.operator.findUnique({
         where: { id: req.operatorId },
         select: { walletBalance: true },
@@ -179,8 +196,10 @@ router.get(
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
+      getMinWalletBalance(),
+      getPlatformFeeSetting(),
     ]);
-    res.json({ balance: operator.walletBalance, transactions });
+    res.json({ balance: operator.walletBalance, minBalance, fee, transactions });
   })
 );
 

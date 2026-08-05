@@ -643,13 +643,12 @@ export async function advanceBookingStatus(bookingId, operatorId, targetStatus) 
 }
 
 // Pay-first (2026-08-04): money was settled BEFORE dispatch for prepaid
-// bookings — completion just credits the operator's locked subtotal as
-// earnings (platform keeps the fee it already collected). Cash trips keep
-// the agent model: patient paid the crew, fee deducts from the wallet.
+// bookings. Two-line ledger (2026-08-05): credit the full fare, then deduct
+// the fee as its own auditable row — net = subtotal. Cash trips keep the
+// agent model: patient paid the crew, only the fee row hits the wallet.
 async function settleCompletedBooking(booking) {
   if (booking.paidAt) {
     await creditTripEarning(booking);
-    return;
   }
   await chargeServiceFee(booking);
 }

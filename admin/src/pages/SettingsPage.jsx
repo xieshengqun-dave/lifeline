@@ -1,5 +1,5 @@
 import React from "react";
-import { getPlatformFeeSetting, updatePlatformFeeSetting, getOfferTimeoutSetting, updateOfferTimeoutSetting } from "../api/client";
+import { getPlatformFeeSetting, updatePlatformFeeSetting, getOfferTimeoutSetting, updateOfferTimeoutSetting, getMinBalanceSetting, updateMinBalanceSetting } from "../api/client";
 
 // Not in the original design spec at all — a genuinely new screen. The
 // platform fee (flat RM or a %) was previously hardcoded; this is where an
@@ -18,13 +18,23 @@ export default function SettingsPage() {
   const [timeoutSaved, setTimeoutSaved] = React.useState(false);
   const [timeoutError, setTimeoutError] = React.useState(null);
 
+  const [minBalance, setMinBalance] = React.useState("");
+  const [minBalanceSaving, setMinBalanceSaving] = React.useState(false);
+  const [minBalanceSaved, setMinBalanceSaved] = React.useState(false);
+  const [minBalanceError, setMinBalanceError] = React.useState(null);
+
   React.useEffect(() => {
     (async () => {
       try {
-        const [s, t] = await Promise.all([getPlatformFeeSetting(), getOfferTimeoutSetting()]);
+        const [s, t, m] = await Promise.all([
+          getPlatformFeeSetting(),
+          getOfferTimeoutSetting(),
+          getMinBalanceSetting(),
+        ]);
         setFeeType(s.feeType);
         setFeeValue(String(s.feeValue));
         setTimeoutSeconds(String(t.seconds));
+        setMinBalance(String(m.amount));
       } catch (err) {
         setError(err.message || "Could not load settings.");
       } finally {
@@ -32,6 +42,21 @@ export default function SettingsPage() {
       }
     })();
   }, []);
+
+  async function saveMinBalance() {
+    setMinBalanceSaving(true);
+    setMinBalanceError(null);
+    setMinBalanceSaved(false);
+    try {
+      const m = await updateMinBalanceSetting(parseFloat(minBalance));
+      setMinBalance(String(m.amount));
+      setMinBalanceSaved(true);
+    } catch (err) {
+      setMinBalanceError(err.message || "Could not save (allowed range: RM0–1000).");
+    } finally {
+      setMinBalanceSaving(false);
+    }
+  }
 
   async function saveTimeout() {
     setTimeoutSaving(true);
@@ -142,6 +167,39 @@ export default function SettingsPage() {
           {timeoutSaving ? "Saving…" : "Save accept window"}
         </button>
         {timeoutSaved && <div className="settings-success">Saved — next offers use the new window.</div>}
+      </div>
+
+      <div className="settings-card" style={{ marginTop: 18 }}>
+        <div className="settings-row">
+          <label className="settings-label">Minimum wallet balance to go online (RM)</label>
+          <div className="settings-input-row">
+            <input
+              className="settings-input"
+              type="number"
+              min="0"
+              max="1000"
+              step="10"
+              value={minBalance}
+              onChange={(e) => { setMinBalance(e.target.value); setMinBalanceSaved(false); }}
+            />
+          </div>
+          <div style={{ fontSize: 12, color: "#5b6b73", marginTop: 6 }}>
+            Operators below this float can't flip themselves online (enforced
+            server-side). Set 0 to disable. The per-job rule still applies either way:
+            an operator never receives a job whose platform fee their wallet can't cover.
+          </div>
+        </div>
+
+        {minBalanceError && <div className="error-box">{minBalanceError}</div>}
+
+        <button
+          className="settings-save-btn"
+          onClick={saveMinBalance}
+          disabled={minBalanceSaving || minBalance === ""}
+        >
+          {minBalanceSaving ? "Saving…" : "Save minimum balance"}
+        </button>
+        {minBalanceSaved && <div className="settings-success">Saved — applies the next time an operator tries to go online.</div>}
       </div>
     </div>
   );

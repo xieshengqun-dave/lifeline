@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Switch, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Switch, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -10,6 +10,7 @@ import { AuthContext, OperatorContext } from "../../App";
 import { getOperatorMe, getOperatorBookings, getOperatorFleet, getOperatorWallet, setAvailability } from "../api/client";
 import Header from "./_Header";
 import Card from "../components/ui/Card";
+import BottomTabBar from "../components/ui/BottomTabBar";
 
 const ACTIVE_STATUSES = ["accepted", "enroute", "arrived", "onboard"];
 
@@ -57,8 +58,16 @@ export default function HomeScreen({ navigation }) {
     setOnline(next); // optimistic
     try {
       await setAvailability(next);
-    } catch {
+    } catch (e) {
       setOnline(!next); // rollback
+      // BO-set minimum float — the server is the authority; explain + route
+      // to top-up rather than failing silently.
+      if (e?.code === "min_balance" || /balance/i.test(e?.message || "")) {
+        Alert.alert("Top up to go online", e.message || "Your wallet balance is below the minimum required to go online.", [
+          { text: "Not now" },
+          { text: "Top up", onPress: () => navigation.navigate("TopUp") },
+        ]);
+      }
     } finally {
       setToggling(false);
     }
@@ -73,14 +82,7 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={["top"]}>
-      <Header
-        title={operator?.name || "Home"}
-        right={
-          <TouchableOpacity onPress={signOut}>
-            <Text style={h.signOut}>Sign Out</Text>
-          </TouchableOpacity>
-        }
-      />
+      <Header title={operator?.name || "Home"} />
       <ScrollView contentContainerStyle={{ padding: spacing.screenPad }}>
         <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={h.onlineCard}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -105,6 +107,24 @@ export default function HomeScreen({ navigation }) {
           <ActivityIndicator color={C.teal} style={{ marginTop: 24 }} />
         ) : (
           <>
+            {/* W1 wallet card — navy, its own card (the old 3-in-a-row stat
+                squeeze is exactly what the design spec calls out as wrong) */}
+            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate("Wallet")}>
+              <View style={h.walletCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={h.walletL}>WALLET BALANCE</Text>
+                  <Text style={h.walletN}>{wallet != null ? `RM ${wallet.toFixed(2)}` : "—"}</Text>
+                </View>
+                <View style={h.walletIconTile}>
+                  <Ionicons name="card-outline" size={20} color="#7fffdc" />
+                </View>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={h.topupBtn} activeOpacity={0.9} onPress={() => navigation.navigate("TopUp")}>
+              <Ionicons name="add" size={16} color={C.tealDeep} />
+              <Text style={h.topupBtnT}>Top up</Text>
+            </TouchableOpacity>
+
             <Text style={h.sect}>TODAY</Text>
             <View style={h.statGrid}>
               <Card style={h.statCard}>
@@ -115,14 +135,6 @@ export default function HomeScreen({ navigation }) {
                 <Text style={h.statL}>Earnings</Text>
                 <Text style={[h.statN, { color: C.tealDeep }]}>RM {earningsToday.toFixed(0)}</Text>
               </Card>
-              <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.85} onPress={() => navigation.navigate("Wallet")}>
-                <Card style={[h.statCard, { flex: undefined }]}>
-                  <Text style={h.statL}>Wallet</Text>
-                  <Text style={[h.statN, { color: wallet != null && wallet < 30 ? C.red : C.ink }]}>
-                    {wallet != null ? `RM ${wallet.toFixed(0)}` : "—"}
-                  </Text>
-                </Card>
-              </TouchableOpacity>
             </View>
 
             <View style={h.fleetHeaderRow}>
@@ -159,12 +171,10 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity style={h.historyBtn} onPress={() => navigation.navigate("TripHistory")}>
-              <Text style={h.historyBtnT}>Trip History</Text>
-            </TouchableOpacity>
           </>
         )}
       </ScrollView>
+      <BottomTabBar navigation={navigation} active="Home" />
     </SafeAreaView>
   );
 }
@@ -179,6 +189,22 @@ const h = StyleSheet.create({
   bannerT: { ...type.bodySemibold, color: C.tealDeep, fontSize: 13 },
   sect: { ...type.caption, fontSize: 11, color: C.faint, marginBottom: 10 },
   statGrid: { flexDirection: "row", gap: 10, marginBottom: 20 },
+  walletCard: {
+    flexDirection: "row", alignItems: "center", backgroundColor: C.navy,
+    borderRadius: 20, padding: 18, marginBottom: 10, ...shadows.cardLift,
+  },
+  walletL: { ...type.caption, fontSize: 10.5, color: "rgba(255,255,255,0.6)" },
+  walletN: { ...type.screenTitle, fontSize: 30, color: "#fff", marginTop: 4 },
+  walletIconTile: {
+    width: 42, height: 42, borderRadius: 13, backgroundColor: "rgba(127,255,220,0.14)",
+    alignItems: "center", justifyContent: "center",
+  },
+  topupBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    backgroundColor: "#fff", borderRadius: 13, paddingVertical: 12, marginBottom: 20,
+    borderWidth: 1.5, borderColor: C.tealLine,
+  },
+  topupBtnT: { ...type.buttonLabel, fontSize: 13.5, color: C.tealDeep },
   statCard: { flex: 1, alignItems: "flex-start" },
   statL: { ...type.body, fontSize: 11.5, color: C.faint, marginBottom: 4 },
   statN: { ...type.statNumber, fontSize: 24, color: C.ink },

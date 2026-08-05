@@ -62,3 +62,6 @@ export const updatePlatformFeeSetting = (p) => req("/api/admin/settings/platform
 export const getOfferTimeoutSetting = () => req("/api/admin/settings/offer-timeout");
 export const updateOfferTimeoutSetting = (seconds) =>
   req("/api/admin/settings/offer-timeout", { method: "PUT", body: JSON.stringify({ seconds }) });
+export const getMinBalanceSetting = () => req("/api/admin/settings/min-wallet-balance");
+export const updateMinBalanceSetting = (amount) =>
+  req("/api/admin/settings/min-wallet-balance", { method: "PUT", body: JSON.stringify({ amount }) });

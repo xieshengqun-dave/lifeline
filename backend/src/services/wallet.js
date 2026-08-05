@@ -66,12 +66,13 @@ export async function chargeServiceFee(booking) {
   });
 }
 
-// Card trip settled through the platform: the platform captured the TOTAL,
-// so the operator's subtotal is credited to their wallet as withdrawable
-// earnings (the fee is implicitly kept — no service_fee row for card trips).
-// Idempotent per booking.
+// Prepaid trip settled through the platform. Two-line ledger (design spec,
+// user-approved 2026-08-05): the FULL fare is credited, then the platform
+// fee is deducted as its own row — operators can audit the fee. Net equals
+// the subtotal. Both lines are idempotent per booking. (Cash trips get only
+// the fee deduction — the operator holds the fare in hand.)
 export async function creditTripEarning(booking) {
-  if (!booking.operatorId || !booking.subtotal || booking.subtotal <= 0) return null;
+  if (!booking.operatorId || !booking.total || booking.total <= 0) return null;
   const existing = await prisma.walletTransaction.findFirst({
     where: { bookingId: booking.id, type: WALLET_TX_TYPE.TRIP_EARNING },
   });
@@ -79,9 +80,9 @@ export async function creditTripEarning(booking) {
   return applyWalletTransaction({
     operatorId: booking.operatorId,
     type: WALLET_TX_TYPE.TRIP_EARNING,
-    amount: booking.subtotal,
+    amount: booking.total,
     bookingId: booking.id,
-    note: `Card trip earning — ${booking.pickupName} → ${booking.destinationName}`,
+    note: `Trip fare — ${booking.pickupName} → ${booking.destinationName}`,
   });
 }
 

@@ -11,6 +11,8 @@ import {
   updatePlatformFeeSetting,
   getOfferTimeoutSeconds,
   updateOfferTimeoutSeconds,
+  getMinWalletBalance,
+  updateMinWalletBalance,
 } from "../services/settings.js";
 import { getCompletedTripCounts } from "../services/rating.js";
 import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
@@ -165,6 +167,26 @@ router.put(
   asyncHandler(async (req, res) => {
     await updateOfferTimeoutSeconds(req.body.seconds);
     res.json({ seconds: await getOfferTimeoutSeconds() });
+  })
+);
+
+// Minimum wallet balance to go online (RM; 0 disables the gate).
+const minBalanceSchema = z.object({ amount: z.number().min(0).max(1000) });
+
+router.get(
+  "/settings/min-wallet-balance",
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    res.json({ amount: await getMinWalletBalance() });
+  })
+);
+
+router.put(
+  "/settings/min-wallet-balance",
+  requireAdmin,
+  validate(minBalanceSchema),
+  asyncHandler(async (req, res) => {
+    res.json({ amount: (await updateMinWalletBalance(req.body.amount)).minWalletBalance });
   })
 );
 

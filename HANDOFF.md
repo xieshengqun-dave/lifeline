@@ -229,6 +229,37 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-08-05 — Operator app redesign (design_handoff_lifeline_operator) + BO knobs
+- New design package landed at `design_handoff_lifeline_operator/`. Much of it was
+  already met by the July redesign (login, dark incoming-request, earnings band) —
+  the real deltas built this session: **W1 Home** (navy wallet card + Top up button,
+  2-col stat grid — the spec explicitly calls out our old 3-in-a-row squeeze),
+  **bottom tab bar** (Home · Trips · Wallet · Profile; plain styled rows, same
+  pattern as patient app), **new Profile screen** (session info + confirm sign-out),
+  **W2 Wallet** (navy→teal band, balance block, COMMISSION + MIN BALANCE info cards
+  with REAL values, min-balance notice, restyled ledger with icon tiles / green
+  credits / red debit amounts), **W3 Top up screen** (preset grid RM50–1000 +
+  Other, live new-balance line; payment still via Stripe hosted page — the spec's
+  TNG/FPX picker waits for the Malaysian gateway).
+- **Spec conflicts resolved with the user, not silently adopted**: pay-first
+  supersedes the spec's charge-on-completion; fee is BO-config (not hardcoded 15%);
+  checkbox multi-crew kept (spec's single dropdown contradicts the earlier
+  decision); "Next payout" + "Pending/24h hold" omitted (no backing systems);
+  declined-history rows omitted (operatorId doesn't track declined offers — needs a
+  BookingOffer-scoped query later).
+- **User decisions this session**: (1) prepaid trips get a TWO-LINE ledger — full
+  fare credited (+total, "Trip fare") then platform fee deducted (−fee, "Platform
+  commission") so operators can audit the fee; net unchanged (= subtotal). Cash
+  trips remain a single fee deduction. (2) **Minimum wallet balance to go online is
+  a BO setting** (PlatformSettings.minWalletBalance, default RM50, 0 disables;
+  admin Settings card added) — enforced server-side on the availability toggle
+  (409 `min_balance`; operator app offers a Top up shortcut). Per-job fee gating
+  KEPT alongside it. Also earlier same day: **operator accept window is a BO
+  setting** (15–300s, admin Settings card; read fresh per offer).
+- All verified: two-line ledger live-tested (+193.13/−15), min-balance gate
+  409→top-up→200, suite green (5 files), all three frontends build.
+- **Next:** rebuild operator APK; user re-tests. Fiuu contact still pending.
+
 ### 2026-08-04 — Pay-first: patients pay BEFORE dispatch (user decision)
 - **Flow redesign decided by the user**: "patient pay then only order push to
   operator." Locked sub-decisions: **cash survives for emergencies only** (transfers/

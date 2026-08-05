@@ -39,6 +39,21 @@ export async function updateOfferTimeoutSeconds(seconds) {
   return { offerTimeoutSeconds: row.offerTimeoutSeconds };
 }
 
+// Minimum wallet balance (RM) required to go online (BO-set; 0 disables).
+export async function getMinWalletBalance() {
+  const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
+  return row?.minWalletBalance ?? 50;
+}
+
+export async function updateMinWalletBalance(amount) {
+  const row = await prisma.platformSettings.upsert({
+    where: { id: SETTINGS_ID },
+    update: { minWalletBalance: amount },
+    create: { id: SETTINGS_ID, minWalletBalance: amount },
+  });
+  return { minWalletBalance: row.minWalletBalance };
+}
+
 export function resolveFeeAmount(setting, subtotal) {
   if (setting.feeType === PLATFORM_FEE_TYPE.PERCENT) {
     return Math.round(subtotal * (setting.feeValue / 100) * 100) / 100;

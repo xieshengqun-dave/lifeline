@@ -257,5 +257,9 @@ model PlatformSettings {
   // OFFER_TIMEOUT_SECONDS env default. Applies to offers created AFTER the
   // change — in-flight offers keep their persisted expiresAt.
   offerTimeoutSeconds Int?
+  // Minimum wallet balance (RM) required to flip online (admin-set; 0
+  // disables the gate). Enforced server-side on the availability toggle;
+  // complements the per-job fee gate, doesn't replace it.
+  minWalletBalance Float @default(50)
   updatedAt DateTime @updatedAt
 }
