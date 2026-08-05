@@ -38,6 +38,15 @@ export default function AmbulancesScreen({ navigation }) {
   const [state, setState] = React.useState({ loading: true, error: null, operators: [] });
   const [sortKey, setSortKey] = React.useState("eta");
   const [activeIndex, setActiveIndex] = React.useState(0);
+
+  // Markers re-render (tracksViewChanges=true) for a moment after data or
+  // selection changes, then freeze for map performance — see Marker comment.
+  const [pinsLive, setPinsLive] = React.useState(true);
+  React.useEffect(() => {
+    setPinsLive(true);
+    const t = setTimeout(() => setPinsLive(false), 700);
+    return () => clearTimeout(t);
+  }, [state.operators, activeIndex, sortKey]);
   const mapRef = React.useRef(null);
   const listRef = React.useRef(null);
 
@@ -174,14 +183,15 @@ export default function AmbulancesScreen({ navigation }) {
               const i = sorted.indexOf(op);
               const isActive = i === activeIndex;
               return (
-                // key includes isActive so the marker remounts on selection —
-                // required because tracksViewChanges={false} freezes the
-                // rendered view and it wouldn't restyle otherwise.
+                // tracksViewChanges stays true briefly after mount/selection
+                // (pinsLive) so Android doesn't snapshot the marker before its
+                // icon font loads — with a hard false, standalone builds render
+                // the pins invisible (works in Expo Go, breaks in APKs).
                 <Marker
-                  key={`${op.operatorId}-${isActive}`}
+                  key={op.operatorId}
                   coordinate={{ latitude: op.baseLat, longitude: op.baseLng }}
                   anchor={{ x: 0.5, y: 1 }}
-                  tracksViewChanges={false}
+                  tracksViewChanges={pinsLive}
                   onPress={() => focusOperator(i, { scrollList: true })}
                 >
                   <View style={a.pinWrap}>
