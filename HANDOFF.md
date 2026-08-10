@@ -229,6 +229,31 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-08-06 — Fiuu integration built (awaiting the user's sandbox credentials)
+- **Provider switch**: `PAYMENT_PROVIDER` env (`stripe` default | `fiuu`). All
+  Stripe code untouched; `services/providers/fiuu.js` implements the Malaysian
+  gateway behind the same `services/payment.js` facade.
+- **Fiuu flow (hosted page)**: booking payments + operator top-ups build a
+  vcode-signed URL to Fiuu's hosted page (sandbox.merchant.razer.com when
+  FIUU_SANDBOX, else pay.fiuu.com) which presents whatever channels the merchant
+  account enables — TNG eWallet, DuitNow QR, FPX, cards. New `PaymentOrder` model
+  gives idempotent settlement + our-side amount verification. `POST
+  /api/payments/fiuu/notify` (authoritative, ACKs CBTOKEN:MPSTATOK) and
+  `/fiuu/return` (browser POST) both verify the skey signature chain
+  (md5 formulas in providers/fiuu.js — **verify against the real sandbox before
+  go-live**, they're from the stable MOLPay/RMS lineage, not yet
+  sandbox-confirmed). Verified by simulation: signed URL, tampered-amount
+  rejection, settle→dispatch, duplicate-notify no-op, top-up credited once.
+- **Deliberate gaps under fiuu** (flagged in-app + CREDENTIALS): no card vaulting
+  (Fiuu Recurring API is a separate enablement — "linked card" hides, patients
+  use the hosted page), and **refunds are MANUAL in the Fiuu portal** until their
+  Refund API is sandbox-verified — cancelled prepaid bookings log loudly.
+- `/api/payments/status` now returns `{enabled, provider, cardVault}`; top-up
+  screen copy made provider-agnostic.
+- **Blocked on the user**: Fiuu Developer-account application (fiuu.com, ~24h
+  turnaround). Credential checklist + env vars in CREDENTIALS.md. Until then
+  production stays on Stripe test mode, unchanged.
+
 ### 2026-08-05 — Operator app redesign (design_handoff_lifeline_operator) + BO knobs
 - New design package landed at `design_handoff_lifeline_operator/`. Much of it was
   already met by the July redesign (login, dark incoming-request, earnings band) —

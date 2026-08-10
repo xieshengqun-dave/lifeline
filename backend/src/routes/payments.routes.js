@@ -5,6 +5,8 @@ import { validate } from "../middleware/validate.js";
 import { asyncHandler } from "../middleware/errorHandler.js";
 import {
   paymentsEnabled,
+  providerName,
+  cardVaultAvailable,
   createCardSetupSession,
   getSavedCard,
   unlinkCard,
@@ -13,6 +15,8 @@ import {
   confirmBookingPayment,
 } from "../services/payment.js";
 import { markBookingPaidAndDispatch } from "../services/offerEngine.js";
+import { verifyFiuuResponse, settleFiuuOrder } from "../services/providers/fiuu.js";
+import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
 
 const router = Router();
 
@@ -32,7 +36,9 @@ ${link ? `<a href="${link}" style="display:inline-block;margin-top:14px;padding:
 </div></body>`;
 }
 
-router.get("/status", (req, res) => res.json({ enabled: paymentsEnabled() }));
+router.get("/status", (req, res) =>
+  res.json({ enabled: paymentsEnabled(), provider: providerName(), cardVault: cardVaultAvailable() })
+);
 
 // ── Patient card management ──
 router.post(
@@ -74,6 +80,57 @@ router.get(
     await markBookingPaidAndDispatch(result.bookingId, result.paymentRef);
     res.send(
       landingPage("Payment received ✓", "We're finding your ambulance now — sending you back to the app…", "lifeline")
+    );
+  })
+);
+
+// ── Fiuu (Malaysian gateway): return + notification handlers. Both verify
+// the skey signature and settle idempotently; the notification URL is the
+// authoritative channel (per Fiuu's own guidance), the return URL is the
+// user-facing one that also settles when it beat the notification (e.g.
+// local dev, where Fiuu's servers can't reach us). ──
+async function settleVerifiedFiuu(verified) {
+  if (!verified.paid) return { settled: false };
+  const fresh = await settleFiuuOrder(verified.order, verified.tranID);
+  if (!fresh) return { settled: true, duplicate: true }; // already processed
+  if (fresh.kind === "booking_payment") {
+    await markBookingPaidAndDispatch(fresh.bookingId, `fiuu:${verified.tranID}`);
+  } else if (fresh.kind === "wallet_topup") {
+    await applyWalletTransaction({
+      operatorId: fresh.operatorId,
+      type: WALLET_TX_TYPE.TOPUP,
+      amount: fresh.amountRm,
+      note: `Top-up via Fiuu (${fresh.id} / ${verified.tranID})`,
+    });
+  }
+  return { settled: true };
+}
+
+router.post(
+  "/fiuu/notify",
+  asyncHandler(async (req, res) => {
+    const verified = await verifyFiuuResponse(req.body);
+    if (verified.ok) await settleVerifiedFiuu(verified);
+    // Fiuu's callback ACK token — always respond so it stops retrying;
+    // invalid posts were rejected above and logged.
+    res.type("text/plain").send("CBTOKEN:MPSTATOK");
+  })
+);
+
+// Fiuu posts form data to the return URL via the payer's browser.
+router.post(
+  "/fiuu/return",
+  asyncHandler(async (req, res) => {
+    const verified = await verifyFiuuResponse(req.body);
+    if (!verified.ok) {
+      res.status(400).send(landingPage("Payment could not be verified", "Return to the Lifeline app and check your booking."));
+      return;
+    }
+    await settleVerifiedFiuu(verified);
+    res.send(
+      verified.paid
+        ? landingPage("Payment received ✓", "Return to the Lifeline app — everything continues automatically.")
+        : landingPage("Payment not completed", "Return to the Lifeline app to try again.")
     );
   })
 );

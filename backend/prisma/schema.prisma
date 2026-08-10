@@ -107,6 +107,26 @@ model Crew {
   @@index([operatorId])
 }
 
+// ── Payment orders (provider-agnostic): one row per hosted-page payment
+// attempt, keyed by the order id we hand the gateway. Gives idempotent
+// settlement + amount verification for gateways that call back with only an
+// order reference (Fiuu). Stripe flows don't need it (session metadata). ──
+model PaymentOrder {
+  id         String   @id @default(cuid()) // doubles as the gateway orderid
+  kind       String // booking_payment | wallet_topup
+  bookingId  String?
+  operatorId String?
+  amountRm   Float
+  provider   String   @default("fiuu")
+  status     String   @default("pending") // pending | paid
+  gatewayRef String? // e.g. Fiuu tranID
+  createdAt  DateTime @default(now())
+  paidAt     DateTime?
+
+  @@index([bookingId])
+  @@index([operatorId])
+}
+
 // ── Operator wallet ledger (append-only; balance is derivable from rows) ──
 model WalletTransaction {
   id         String   @id @default(cuid())

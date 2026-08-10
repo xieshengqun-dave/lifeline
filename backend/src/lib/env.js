@@ -21,9 +21,17 @@ export const config = {
   allowUnverifiedSocialAuth: process.env.ALLOW_UNVERIFIED_SOCIAL_AUTH === "true",
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
   appleClientId: process.env.APPLE_CLIENT_ID || null,
+  // Payment provider switch: "stripe" (default, reference implementation) or
+  // "fiuu" (Malaysian gateway — TNG/DuitNow/FPX/cards via hosted page).
+  paymentProvider: process.env.PAYMENT_PROVIDER === "fiuu" ? "fiuu" : "stripe",
   // Stripe (test keys during the build; live keys are a human go-live
   // decision). Optional: card features 501 cleanly when absent.
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || null,
+  // Fiuu credentials (sandbox first — Dev account from fiuu.com).
+  fiuuMerchantId: process.env.FIUU_MERCHANT_ID || null,
+  fiuuVerifyKey: process.env.FIUU_VERIFY_KEY || null,
+  fiuuSecretKey: process.env.FIUU_SECRET_KEY || null,
+  fiuuSandbox: process.env.FIUU_SANDBOX !== "false", // default sandbox until go-live
   // Where hosted Checkout sends the browser back to (the API renders a tiny
   // "return to the app" page). Defaults to localhost for dev.
   publicApiUrl: process.env.PUBLIC_API_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 4000}`,

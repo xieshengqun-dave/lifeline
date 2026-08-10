@@ -12,9 +12,18 @@ import { applyWalletTransaction, WALLET_TX_TYPE } from "./wallet.js";
 // Test keys now; going live = swapping STRIPE_SECRET_KEY for a live key,
 // which is an explicit human decision (see CLAUDE.md payments boundary).
 
-const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
+import { fiuuEnabled, createFiuuBookingPayment, createFiuuTopup } from "./providers/fiuu.js";
 
-export const paymentsEnabled = () => !!stripe;
+const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
+const usingFiuu = () => config.paymentProvider === "fiuu";
+
+export const paymentsEnabled = () => (usingFiuu() ? fiuuEnabled() : !!stripe);
+export const providerName = () => config.paymentProvider;
+
+// Card vaulting exists only on Stripe (Fiuu's Recurring API is a separate
+// enablement, not built yet) — under fiuu the apps hide the linked-card
+// path because getSavedCard() returns null.
+export const cardVaultAvailable = () => !usingFiuu() && !!stripe;
 
 function requireStripe() {
   if (!stripe) {
@@ -57,7 +66,7 @@ export async function createCardSetupSession(userId) {
 
 // The patient's saved card, if any (brand + last4 only).
 export async function getSavedCard(userId) {
-  if (!stripe) return null;
+  if (!cardVaultAvailable()) return null;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } });
   if (!user?.stripeCustomerId) return null;
   const methods = await stripe.paymentMethods.list({ customer: user.stripeCustomerId, type: "card", limit: 1 });
@@ -77,7 +86,7 @@ export async function unlinkCard(userId) {
 // { charged: true } or { charged: false, reason } — the caller falls back to
 // the cash flow on failure and NEVER blocks trip completion. ──
 export async function chargeBookingCard(booking) {
-  if (!stripe) return { charged: false, reason: "not_configured" };
+  if (!cardVaultAvailable()) return { charged: false, reason: "no_card_vault" };
   const user = await prisma.user.findUnique({
     where: { id: booking.userId },
     select: { stripeCustomerId: true },
@@ -113,6 +122,12 @@ export async function chargeBookingCard(booking) {
 //     provider) → confirmBookingPayment verifies and triggers dispatch.
 
 export async function createBookingPaymentSession(booking) {
+  if (usingFiuu()) {
+    const user = booking.userId
+      ? await prisma.user.findUnique({ where: { id: booking.userId }, select: { name: true, email: true } })
+      : null;
+    return createFiuuBookingPayment(booking, user);
+  }
   const s = requireStripe();
   const session = await s.checkout.sessions.create({
     mode: "payment",
@@ -161,6 +176,12 @@ export async function confirmBookingPayment(sessionId) {
 // Caller is responsible for guarding idempotency via paymentStatus/refundedAt
 // before calling; this just executes the provider refund.
 export async function refundBookingPayment(booking) {
+  if (usingFiuu()) {
+    // Fiuu Refund API deliberately not wired until its spec is verified
+    // against the sandbox — the engine logs this loudly and the refund is
+    // processed manually in the Fiuu merchant portal for now.
+    return { refunded: false, reason: "fiuu_refund_manual — process in the Fiuu portal" };
+  }
   const s = requireStripe();
   if (!booking.paymentRef) return { refunded: false, reason: "no_payment_ref" };
   try {
@@ -176,10 +197,17 @@ export async function refundBookingPayment(booking) {
 // ── Operator: self-serve wallet top-up via hosted Checkout (payment mode).
 // Credited by confirmTopup below, idempotent per Checkout session. ──
 export async function createTopupSession(operatorId, amountRm) {
-  const s = requireStripe();
   if (!Number.isFinite(amountRm) || amountRm < 10 || amountRm > 5000) {
     throw new HttpError(400, "invalid_amount", "Top-up must be between RM10 and RM5000");
   }
+  if (usingFiuu()) {
+    const operator = await prisma.operator.findUnique({
+      where: { id: operatorId },
+      select: { name: true, email: true },
+    });
+    return createFiuuTopup(operatorId, amountRm, operator);
+  }
+  const s = requireStripe();
   const session = await s.checkout.sessions.create({
     mode: "payment",
     currency: CURRENCY,

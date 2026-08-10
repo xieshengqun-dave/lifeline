@@ -95,8 +95,8 @@ export default function TopUpScreen({ navigation }) {
         </View>
 
         <Text style={t.note}>
-          Payment opens on a secure Stripe page in your browser (test mode). Touch 'n Go
-          and FPX arrive with the Malaysian payment gateway.
+          Payment opens on a secure payment page in your browser. Available methods
+          (card / FPX / Touch 'n Go / DuitNow) depend on the active payment gateway.
         </Text>
       </ScrollView>
       <View style={t.footer}>
