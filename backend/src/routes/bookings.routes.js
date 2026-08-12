@@ -112,11 +112,13 @@ router.post(
     ]);
     // Same wallet gate the offer engine applies — patients never see an
     // operator who couldn't actually receive the job (see services/wallet.js).
-    const offerable = candidates.filter(({ operator }) =>
-      canCoverFee(operator, computeFare({ operator, distanceKm, feeSetting }).serviceFee)
-    );
+    // Fare is computed once per candidate and reused for both the gate and
+    // the response.
+    const offerable = candidates
+      .map((c) => ({ ...c, price: computeFare({ operator: c.operator, distanceKm, feeSetting }) }))
+      .filter(({ operator, price }) => canCoverFee(operator, price.serviceFee));
     const tripCounts = await getCompletedTripCounts(offerable.map((c) => c.operator.id));
-    const operators = offerable.map(({ operator, dispatchDistanceKm }) => ({
+    const operators = offerable.map(({ operator, dispatchDistanceKm, price }) => ({
       operatorId: operator.id,
       name: operator.name,
       fleetSummary: operator.fleetSummary,
@@ -124,7 +126,7 @@ router.post(
       baseLng: operator.baseLng,
       dispatchDistanceKm: Math.round(dispatchDistanceKm * 10) / 10,
       etaMinutes: computeEtaMinutes(dispatchDistanceKm),
-      price: computeFare({ operator, distanceKm, feeSetting }),
+      price,
       ratingAvg: operator.ratingAvg,
       ratingCount: operator.ratingCount,
       tripCount: tripCounts[operator.id] || 0,

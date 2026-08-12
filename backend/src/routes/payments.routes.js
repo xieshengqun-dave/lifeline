@@ -13,6 +13,8 @@ import {
   createTopupSession,
   confirmTopup,
   confirmBookingPayment,
+  TOPUP_MIN_RM,
+  TOPUP_MAX_RM,
 } from "../services/payment.js";
 import { markBookingPaidAndDispatch } from "../services/offerEngine.js";
 import { verifyFiuuResponse, settleFiuuOrder } from "../services/providers/fiuu.js";
@@ -157,7 +159,7 @@ router.post(
 );
 
 // ── Operator wallet top-up ──
-const topupSchema = z.object({ amount: z.number().min(10).max(5000) });
+const topupSchema = z.object({ amount: z.number().min(TOPUP_MIN_RM).max(TOPUP_MAX_RM) });
 
 router.post(
   "/topup",

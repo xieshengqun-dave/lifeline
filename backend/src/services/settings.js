@@ -4,6 +4,21 @@ import { PLATFORM_FEE_TYPE } from "../lib/constants.js";
 
 const SETTINGS_ID = 1;
 
+// One fetch of the singleton row yields every setting — use this wherever a
+// code path needs two or more settings (the per-field getters below each
+// cost a query, which tripled up on the dispatch hot path — review cleanup
+// 2026-08-07).
+export async function getAllSettings() {
+  const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
+  return {
+    feeSetting: row
+      ? { feeType: row.feeType, feeValue: row.feeValue }
+      : { feeType: PLATFORM_FEE_TYPE.FLAT, feeValue: config.platformServiceFee },
+    offerTimeoutSeconds: row?.offerTimeoutSeconds ?? config.offerTimeoutSeconds,
+    minWalletBalance: row?.minWalletBalance ?? 50,
+  };
+}
+
 // No row present (fresh DB, no admin has ever changed it) falls back live to
 // the pre-existing PLATFORM_SERVICE_FEE env var — preserves today's exact
 // behavior with no migration backfill needed.

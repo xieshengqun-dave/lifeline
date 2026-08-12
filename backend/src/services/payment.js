@@ -173,25 +173,31 @@ export async function createBookingPaymentSession(booking) {
   return { url: session.url };
 }
 
-// Verifies a booking Checkout session with Stripe. Returns the bookingId and
-// the payment-intent reference (stored as paymentRef so refunds work).
-export async function confirmBookingPayment(sessionId) {
+// Retrieve a Checkout session and verify it is paid and of the expected
+// kind. Returns null for a genuinely-unknown session id or an unpaid /
+// wrong-kind session. Anything else (outage, auth, network) must surface
+// loudly — swallowing it turns a paid booking into "Payment not completed"
+// with no server trace (CLAUDE.md: never silently swallow errors on the
+// booking path).
+async function retrievePaidSession(sessionId, kind) {
   const s = requireStripe();
   let session;
   try {
     session = await s.checkout.sessions.retrieve(sessionId);
   } catch (err) {
-    // Only a genuinely-unknown session id is "not paid". Anything else
-    // (outage, auth, network) must surface loudly — swallowing it turns a
-    // paid booking into "Payment not completed" with no server trace
-    // (CLAUDE.md: never silently swallow errors on the booking path).
-    if (err?.code === "resource_missing") return { paid: false };
-    console.error(`confirmBookingPayment(${sessionId}) Stripe error:`, err.message);
+    if (err?.code === "resource_missing") return null;
+    console.error(`retrievePaidSession(${sessionId}, ${kind}) Stripe error:`, err.message);
     throw err;
   }
-  if (session.payment_status !== "paid" || session.metadata?.kind !== "booking_payment") {
-    return { paid: false };
-  }
+  if (session.payment_status !== "paid" || session.metadata?.kind !== kind) return null;
+  return session;
+}
+
+// Verifies a booking Checkout session with Stripe. Returns the bookingId and
+// the payment-intent reference (stored as paymentRef so refunds work).
+export async function confirmBookingPayment(sessionId) {
+  const session = await retrievePaidSession(sessionId, "booking_payment");
+  if (!session) return { paid: false };
   return {
     paid: true,
     bookingId: session.metadata.bookingId,
@@ -230,9 +236,15 @@ export async function refundBookingPayment(booking) {
 
 // ── Operator: self-serve wallet top-up via hosted Checkout (payment mode).
 // Credited by confirmTopup below, idempotent per Checkout session. ──
+
+// Single source of truth for top-up bounds — the route's zod schema imports
+// these so the two layers can't drift apart.
+export const TOPUP_MIN_RM = 10;
+export const TOPUP_MAX_RM = 5000;
+
 export async function createTopupSession(operatorId, amountRm) {
-  if (!Number.isFinite(amountRm) || amountRm < 10 || amountRm > 5000) {
-    throw new HttpError(400, "invalid_amount", "Top-up must be between RM10 and RM5000");
+  if (!Number.isFinite(amountRm) || amountRm < TOPUP_MIN_RM || amountRm > TOPUP_MAX_RM) {
+    throw new HttpError(400, "invalid_amount", `Top-up must be between RM${TOPUP_MIN_RM} and RM${TOPUP_MAX_RM}`);
   }
   if (usingFiuu()) {
     const operator = await prisma.operator.findUnique({
@@ -271,18 +283,8 @@ export async function createTopupSession(operatorId, amountRm) {
 // Success-URL landing: verify with Stripe that the session is actually paid,
 // then credit the wallet exactly once (ledger note carries the session id).
 export async function confirmTopup(sessionId) {
-  const s = requireStripe();
-  let session;
-  try {
-    session = await s.checkout.sessions.retrieve(sessionId);
-  } catch (err) {
-    if (err?.code === "resource_missing") return { credited: false };
-    console.error(`confirmTopup(${sessionId}) Stripe error:`, err.message);
-    throw err;
-  }
-  if (session.payment_status !== "paid" || session.metadata?.kind !== "wallet_topup") {
-    return { credited: false };
-  }
+  const session = await retrievePaidSession(sessionId, "wallet_topup");
+  if (!session) return { credited: false };
   const operatorId = session.metadata.lifelineOperatorId;
   const orderId = session.metadata.orderId;
 

@@ -3,8 +3,8 @@ import { config } from "../lib/env.js";
 import { emitToBooking, emitToOperator } from "../lib/socket.js";
 import { findEligibleOperators } from "./matching.js";
 import { computeFare, computeEtaMinutes } from "./pricing.js";
-import { getPlatformFeeSetting, getOfferTimeoutSeconds } from "./settings.js";
-import { BOOKING_STATUS, OFFER_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
+import { getPlatformFeeSetting, getAllSettings } from "./settings.js";
+import { BOOKING_STATUS, OFFER_STATUS, PAYMENT_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
 import { pushToUser, pushToOperator } from "./push.js";
 import {
   chargeServiceFee,
@@ -29,7 +29,7 @@ const timers = new Map();
 // booking time). Same timer/recovery/sweep architecture as offers:
 // Booking.scheduledAt is the persisted source of truth, these timers only
 // fire the dispatch.
-export const DISPATCH_LEAD_MS = 45 * 60 * 1000;
+const DISPATCH_LEAD_MS = 45 * 60 * 1000;
 const dispatchTimers = new Map(); // bookingId -> timeout handle
 
 function scheduleDispatchTimer(bookingId, ms) {
@@ -85,17 +85,13 @@ async function offerToOperator(booking, candidate, sequence) {
   // earns that exact subtotal (a cheaper operator earns a little extra; a
   // pricier one is free to decline). Cash: fee setting fetched fresh per
   // offer so the fee active *at offer time* locks into serviceFee/total.
+  // One settings fetch covers both the fee (cash pricing) and the accept
+  // window — read fresh per offer so BO changes apply to the NEXT offer only.
+  const { feeSetting, offerTimeoutSeconds: timeoutSeconds } = await getAllSettings();
   const prepaid = !!booking.paidAt;
-  let price;
-  if (prepaid) {
-    price = { subtotal: booking.subtotal, serviceFee: booking.serviceFee, total: booking.total };
-  } else {
-    const feeSetting = await getPlatformFeeSetting();
-    price = computeFare({ operator: candidate.operator, distanceKm: booking.distanceKm, feeSetting });
-  }
-  // Admin-set accept window, read fresh per offer (BO change applies to the
-  // next offer, never rewrites in-flight expiresAt).
-  const timeoutSeconds = await getOfferTimeoutSeconds();
+  const price = prepaid
+    ? { subtotal: booking.subtotal, serviceFee: booking.serviceFee, total: booking.total }
+    : computeFare({ operator: candidate.operator, distanceKm: booking.distanceKm, feeSetting });
   const offeredAt = new Date();
   const expiresAt = new Date(offeredAt.getTime() + timeoutSeconds * 1000);
 
@@ -196,7 +192,7 @@ async function refundPrepaidBooking(booking, reason) {
   if (result.refunded) {
     await prisma.booking.update({
       where: { id: booking.id },
-      data: { paymentStatus: "refunded", refundedAt: new Date() },
+      data: { paymentStatus: PAYMENT_STATUS.REFUNDED, refundedAt: new Date() },
     });
     await addTrackingEvent(booking.id, "Payment Refunded In Full");
     pushToUser(booking.userId, {
@@ -219,7 +215,12 @@ async function refundPrepaidBooking(booking, reason) {
 // the next nearest untried operator, or expire the booking (999 fallback)
 // if none remain. `reason` is one of: operator_declined | timed_out | skipped.
 export async function advanceToNextOperator(bookingId, reason) {
-  const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { offers: true } });
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    // Only operatorId is needed from the offer history (tried-list) — not
+    // full rows with patient fields (review cleanup 2026-08-07).
+    include: { offers: { select: { operatorId: true } } },
+  });
   if (!booking) throw new HttpError(404, "not_found", "Booking not found");
 
   // CAS from OFFERED only — if the patient cancelled (and was refunded) or
@@ -246,19 +247,7 @@ export async function advanceToNextOperator(bookingId, reason) {
   );
 
   if (candidates.length === 0) {
-    const expired = await prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: BOOKING_STATUS.EXPIRED },
-    });
-    await addTrackingEvent(bookingId, "No Operators Left — Call 999");
-    emitToBooking(bookingId, "booking:status_changed", {
-      bookingId,
-      status: BOOKING_STATUS.EXPIRED,
-      reason: "no_operators_left",
-    });
-    notifyScheduledExpiry(expired);
-    await refundPrepaidBooking(expired, "no_operators");
-    return expired;
+    return expireBookingNoOperators(bookingId);
   }
 
   const { booking: updated } = await offerToOperator(booking, candidates[0], triedOperatorIds.length + 1);
@@ -275,6 +264,38 @@ function notifyScheduledExpiry(booking) {
     body: "No operator accepted your scheduled transport. Please call 999 if urgent, or open the app to book again.",
     data: { kind: "booking_expired", bookingId: booking.id },
   });
+}
+
+// THE terminal "no operators left" transition — one place owns the whole
+// sequence (status, timeline event, socket, scheduled-expiry push, refund).
+// The review found this block hand-copied three times with one copy already
+// drifted; any future step in booking-death belongs HERE.
+async function expireBookingNoOperators(bookingId) {
+  const expired = await prisma.booking.update({
+    where: { id: bookingId },
+    data: { status: BOOKING_STATUS.EXPIRED },
+  });
+  await addTrackingEvent(bookingId, "No Operators Left — Call 999");
+  emitToBooking(bookingId, "booking:status_changed", {
+    bookingId,
+    status: BOOKING_STATUS.EXPIRED,
+    reason: "no_operators_left",
+  });
+  notifyScheduledExpiry(expired);
+  await refundPrepaidBooking(expired, "no_operators");
+  return expired;
+}
+
+// Arm (or immediately fire) the pre-pickup dispatch for a scheduled booking.
+// trackEvent=false on boot recovery so restarts don't duplicate the timeline.
+async function armOrDispatchScheduled(booking, { trackEvent = true } = {}) {
+  if (trackEvent) {
+    await addTrackingEvent(booking.id, "Scheduled — Operator Search Starts Closer to Pickup");
+  }
+  const delay = new Date(booking.scheduledAt).getTime() - DISPATCH_LEAD_MS - Date.now();
+  if (delay <= 0) return dispatchScheduledBooking(booking.id);
+  scheduleDispatchTimer(booking.id, delay);
+  return booking;
 }
 
 // Creates a booking and offers the patient's chosen operator first (falling
@@ -345,13 +366,7 @@ export async function createBookingWithFirstOffer({
   // Scheduled: no offer now — the race starts DISPATCH_LEAD_MS before
   // pickup (or immediately if we're already inside that window).
   if (scheduledAt) {
-    await addTrackingEvent(booking.id, "Scheduled — Operator Search Starts Closer to Pickup");
-    const delay = new Date(scheduledAt).getTime() - DISPATCH_LEAD_MS - Date.now();
-    if (delay <= 0) {
-      return dispatchScheduledBooking(booking.id);
-    }
-    scheduleDispatchTimer(booking.id, delay);
-    return booking;
+    return armOrDispatchScheduled(booking);
   }
 
   return dispatchImmediate(booking, chosenOperatorId);
@@ -375,18 +390,7 @@ async function dispatchImmediate(booking, chosenOperatorId = booking.preferredOp
   const nextBest = chosen || candidates[0];
 
   if (!nextBest) {
-    const expired = await prisma.booking.update({
-      where: { id: booking.id },
-      data: { status: BOOKING_STATUS.EXPIRED },
-    });
-    await addTrackingEvent(booking.id, "No Operators Left — Call 999");
-    emitToBooking(booking.id, "booking:status_changed", {
-      bookingId: booking.id,
-      status: BOOKING_STATUS.EXPIRED,
-      reason: "no_operators_left",
-    });
-    await refundPrepaidBooking(expired, "no_operators");
-    return expired;
+    return expireBookingNoOperators(booking.id);
   }
 
   const { booking: updated } = await offerToOperator(booking, nextBest, 1);
@@ -410,7 +414,7 @@ export async function markBookingPaidAndDispatch(bookingId, paymentRef, provider
     data: {
       paymentRef,
       paidAt: new Date(),
-      paymentStatus: "paid",
+      paymentStatus: PAYMENT_STATUS.PAID,
       paymentProvider: provider,
       status: BOOKING_STATUS.REQUESTED,
     },
@@ -423,7 +427,7 @@ export async function markBookingPaidAndDispatch(bookingId, paymentRef, provider
     // etc.): record the payment so the ref is never lost, then refund it.
     const stale = await prisma.booking.update({
       where: { id: bookingId },
-      data: { paymentRef, paidAt: new Date(), paymentStatus: "paid", paymentProvider: provider },
+      data: { paymentRef, paidAt: new Date(), paymentStatus: PAYMENT_STATUS.PAID, paymentProvider: provider },
     });
     await refundPrepaidBooking(stale, "cancelled");
     return stale;
@@ -438,11 +442,7 @@ export async function markBookingPaidAndDispatch(bookingId, paymentRef, provider
   });
 
   if (paid.scheduledAt) {
-    await addTrackingEvent(bookingId, "Scheduled — Operator Search Starts Closer to Pickup");
-    const delay = new Date(paid.scheduledAt).getTime() - DISPATCH_LEAD_MS - Date.now();
-    if (delay <= 0) return dispatchScheduledBooking(bookingId);
-    scheduleDispatchTimer(bookingId, delay);
-    return paid;
+    return armOrDispatchScheduled(paid);
   }
   return dispatchImmediate(paid);
 }
@@ -473,19 +473,7 @@ export async function dispatchScheduledBooking(bookingId) {
   const nextBest = chosen || candidates[0];
 
   if (!nextBest) {
-    const expired = await prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: BOOKING_STATUS.EXPIRED },
-    });
-    await addTrackingEvent(bookingId, "No Operators Left — Call 999");
-    emitToBooking(bookingId, "booking:status_changed", {
-      bookingId,
-      status: BOOKING_STATUS.EXPIRED,
-      reason: "no_operators_left",
-    });
-    notifyScheduledExpiry(expired);
-    await refundPrepaidBooking(expired, "no_operators");
-    return expired;
+    return expireBookingNoOperators(bookingId);
   }
 
   await addTrackingEvent(bookingId, "Scheduled Pickup Approaching — Finding Your Operator");
@@ -542,16 +530,11 @@ export async function recoverScheduledDispatches() {
   const pending = await prisma.booking.findMany({
     where: { scheduledAt: { not: null }, status: BOOKING_STATUS.REQUESTED, offers: { none: {} } },
   });
-  const now = Date.now();
   for (const booking of pending) {
-    const delay = new Date(booking.scheduledAt).getTime() - DISPATCH_LEAD_MS - now;
-    if (delay <= 0) {
-      await dispatchScheduledBooking(booking.id).catch((err) =>
-        console.error(`recover dispatch(${booking.id}) failed:`, err)
-      );
-    } else {
-      scheduleDispatchTimer(booking.id, delay);
-    }
+    // trackEvent:false — restarts must not duplicate the booking timeline.
+    await armOrDispatchScheduled(booking, { trackEvent: false }).catch((err) =>
+      console.error(`recover dispatch(${booking.id}) failed:`, err)
+    );
   }
   if (pending.length) console.log(`Recovered ${pending.length} scheduled dispatch(es)`);
 }
@@ -628,17 +611,19 @@ export async function declineOffer(offerId, operatorId) {
 // (which already cleared the timer, but the sweep doesn't know that) is a
 // harmless no-op rather than a double-transition.
 export async function expireOffer(offerId) {
-  const offer = await prisma.bookingOffer.findUnique({ where: { id: offerId } });
-  if (!offer || offer.status !== OFFER_STATUS.PENDING) return;
-
-  // CAS — the timer and the sweep (and a racing accept) can all fire for the
-  // same offer; exactly one wins the flip and advances the cascade.
+  // CAS-first — the timer, the sweep, and a racing accept can all fire for
+  // the same offer; exactly one wins the flip. The row is only fetched on a
+  // win (the sweep's callers otherwise paid a redundant read per offer).
   const gate = await prisma.bookingOffer.updateMany({
     where: { id: offerId, status: OFFER_STATUS.PENDING },
     data: { status: OFFER_STATUS.TIMED_OUT, respondedAt: new Date() },
   });
   if (gate.count === 0) return;
   clearOfferTimeout(offerId);
+  const offer = await prisma.bookingOffer.findUnique({
+    where: { id: offerId },
+    select: { bookingId: true },
+  });
   return advanceToNextOperator(offer.bookingId, "timed_out");
 }
 
@@ -698,6 +683,7 @@ export async function cancelBooking(bookingId, userId) {
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: BOOKING_STATUS.CANCELLED });
   // Prepaid cancellations refund in full (v1 policy — no cancellation fee;
   // revisit with operators before pilot if late cancels become a problem).
+  if (!updated.paidAt) return updated; // cash — nothing to refund, no re-read
   await refundPrepaidBooking(updated, "cancelled");
   // Re-read so the response reflects refund fields written above.
   return prisma.booking.findUnique({ where: { id: bookingId } });

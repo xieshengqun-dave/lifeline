@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireOperatorAuth } from "../lib/auth.js";
-import { getMinWalletBalance, getPlatformFeeSetting } from "../services/settings.js";
+import { getMinWalletBalance, getAllSettings } from "../services/settings.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { acceptOffer, declineOffer } from "../services/offerEngine.js";
@@ -186,7 +186,7 @@ router.get(
   "/wallet",
   requireOperatorAuth,
   asyncHandler(async (req, res) => {
-    const [operator, transactions, minBalance, fee] = await Promise.all([
+    const [operator, transactions, settings] = await Promise.all([
       prisma.operator.findUnique({
         where: { id: req.operatorId },
         select: { walletBalance: true },
@@ -196,10 +196,14 @@ router.get(
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
-      getMinWalletBalance(),
-      getPlatformFeeSetting(),
+      getAllSettings(),
     ]);
-    res.json({ balance: operator.walletBalance, minBalance, fee, transactions });
+    res.json({
+      balance: operator.walletBalance,
+      minBalance: settings.minWalletBalance,
+      fee: settings.feeSetting,
+      transactions,
+    });
   })
 );
 
