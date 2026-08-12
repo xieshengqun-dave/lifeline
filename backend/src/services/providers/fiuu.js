@@ -106,13 +106,3 @@ export async function verifyFiuuResponse(body) {
   }
   return { ok: true, order, tranID: String(tranID), paid: status === "00" };
 }
-
-// Marks an order paid exactly once. Returns the fresh row (or null if it was
-// already settled — callers treat that as a no-op success).
-export async function settleFiuuOrder(order, tranID) {
-  const { count } = await prisma.paymentOrder.updateMany({
-    where: { id: order.id, status: "pending" },
-    data: { status: "paid", gatewayRef: tranID, paidAt: new Date() },
-  });
-  return count === 1 ? prisma.paymentOrder.findUnique({ where: { id: order.id } }) : null;
-}

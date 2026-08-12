@@ -13,17 +13,25 @@ import { applyWalletTransaction, WALLET_TX_TYPE, isDuplicateMovement } from "./w
 // which is an explicit human decision (see CLAUDE.md payments boundary).
 
 import { fiuuEnabled, createFiuuBookingPayment, createFiuuTopup } from "./providers/fiuu.js";
+import {
+  hitpayEnabled,
+  createHitpayBookingPayment,
+  createHitpayTopup,
+  refundHitpayPayment,
+} from "./providers/hitpay.js";
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
 const usingFiuu = () => config.paymentProvider === "fiuu";
+const usingHitpay = () => config.paymentProvider === "hitpay";
 
-export const paymentsEnabled = () => (usingFiuu() ? fiuuEnabled() : !!stripe);
+export const paymentsEnabled = () =>
+  usingFiuu() ? fiuuEnabled() : usingHitpay() ? hitpayEnabled() : !!stripe;
 export const providerName = () => config.paymentProvider;
 
-// Card vaulting exists only on Stripe (Fiuu's Recurring API is a separate
-// enablement, not built yet) — under fiuu the apps hide the linked-card
-// path because getSavedCard() returns null.
-export const cardVaultAvailable = () => !usingFiuu() && !!stripe;
+// Card vaulting exists only on Stripe (Fiuu Recurring / HitPay saved cards
+// are separate enablements, not built yet) — under the local gateways the
+// apps hide the linked-card path because getSavedCard() returns null.
+export const cardVaultAvailable = () => config.paymentProvider === "stripe" && !!stripe;
 
 function requireStripe() {
   if (!stripe) {
@@ -89,9 +97,11 @@ export async function unlinkCard(userId) {
 // falls back to a hosted-Checkout URL, never to cash. ──
 
 // Provider-agnostic ref status check for reconciliation (the pending_payment
-// sweep). Fiuu refs settle via notify/return, never via this path.
+// sweep). Fiuu/HitPay refs settle via their webhooks, never via this path.
 export async function checkPaymentRefStatus(paymentRef) {
-  if (!paymentRef || paymentRef.startsWith("fiuu:") || !stripe) return { status: "unknown" };
+  if (!paymentRef || paymentRef.startsWith("fiuu:") || paymentRef.startsWith("hitpay:") || !stripe) {
+    return { status: "unknown" };
+  }
   try {
     const intent = await stripe.paymentIntents.retrieve(paymentRef);
     return { status: intent.status };
@@ -144,11 +154,11 @@ export async function chargeBookingCard(booking) {
 //     provider) → confirmBookingPayment verifies and triggers dispatch.
 
 export async function createBookingPaymentSession(booking) {
-  if (usingFiuu()) {
+  if (usingFiuu() || usingHitpay()) {
     const user = booking.userId
       ? await prisma.user.findUnique({ where: { id: booking.userId }, select: { name: true, email: true } })
       : null;
-    return createFiuuBookingPayment(booking, user);
+    return usingFiuu() ? createFiuuBookingPayment(booking, user) : createHitpayBookingPayment(booking, user);
   }
   const s = requireStripe();
   const session = await s.checkout.sessions.create({
@@ -215,12 +225,22 @@ export async function refundBookingPayment(booking) {
   // (review finding 2026-08-06). Legacy rows without a recorded provider
   // fall back to the ref prefix, then config.
   const paidVia =
-    booking.paymentProvider || (booking.paymentRef?.startsWith("fiuu:") ? "fiuu" : config.paymentProvider);
+    booking.paymentProvider ||
+    (booking.paymentRef?.startsWith("fiuu:")
+      ? "fiuu"
+      : booking.paymentRef?.startsWith("hitpay:")
+        ? "hitpay"
+        : config.paymentProvider);
   if (paidVia === "fiuu") {
     // Fiuu Refund API deliberately not wired until its spec is verified
     // against the sandbox — the engine logs this loudly and the refund is
     // processed manually in the Fiuu merchant portal for now.
     return { refunded: false, reason: "fiuu_refund_manual — process in the FIUU merchant portal" };
+  }
+  if (paidVia === "hitpay") {
+    // paymentRef format: "hitpay:<payment_id>" (set at webhook settle).
+    if (!booking.paymentRef?.startsWith("hitpay:")) return { refunded: false, reason: "no_payment_ref" };
+    return refundHitpayPayment(booking.paymentRef.slice("hitpay:".length), booking.total);
   }
   const s = requireStripe();
   if (!booking.paymentRef) return { refunded: false, reason: "no_payment_ref" };
@@ -246,12 +266,14 @@ export async function createTopupSession(operatorId, amountRm) {
   if (!Number.isFinite(amountRm) || amountRm < TOPUP_MIN_RM || amountRm > TOPUP_MAX_RM) {
     throw new HttpError(400, "invalid_amount", `Top-up must be between RM${TOPUP_MIN_RM} and RM${TOPUP_MAX_RM}`);
   }
-  if (usingFiuu()) {
+  if (usingFiuu() || usingHitpay()) {
     const operator = await prisma.operator.findUnique({
       where: { id: operatorId },
       select: { name: true, email: true },
     });
-    return createFiuuTopup(operatorId, amountRm, operator);
+    return usingFiuu()
+      ? createFiuuTopup(operatorId, amountRm, operator)
+      : createHitpayTopup(operatorId, amountRm, operator);
   }
   const s = requireStripe();
   // PaymentOrder gives the top-up a proper atomic settlement gate — the

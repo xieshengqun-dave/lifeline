@@ -17,7 +17,9 @@ import {
   TOPUP_MAX_RM,
 } from "../services/payment.js";
 import { markBookingPaidAndDispatch } from "../services/offerEngine.js";
-import { verifyFiuuResponse, settleFiuuOrder } from "../services/providers/fiuu.js";
+import { verifyFiuuResponse } from "../services/providers/fiuu.js";
+import { verifyHitpayCallback } from "../services/providers/hitpay.js";
+import { settlePaymentOrder } from "../services/paymentOrders.js";
 import { applyWalletTransaction, WALLET_TX_TYPE, isDuplicateMovement } from "../services/wallet.js";
 import { prisma } from "../lib/prisma.js";
 
@@ -87,22 +89,21 @@ router.get(
   })
 );
 
-// ── Fiuu (Malaysian gateway): return + notification handlers. Both verify
-// the skey signature and settle idempotently; the notification URL is the
-// authoritative channel (per Fiuu's own guidance), the return URL is the
-// user-facing one that also settles when it beat the notification (e.g.
-// local dev, where Fiuu's servers can't reach us). ──
-async function settleVerifiedFiuu(verified) {
+// ── Local gateways (Fiuu / HitPay): webhook + return handlers share one
+// settle path. The webhook is the authoritative channel; the return URL is
+// the user-facing one. `verified` is the provider-verified callback in a
+// common shape: { order, paid, ref } where ref is the gateway's payment id. ──
+async function settleVerifiedOrder(verified, provider) {
   if (!verified.paid) return { settled: false };
-  const fresh = await settleFiuuOrder(verified.order, verified.tranID);
+  const fresh = await settlePaymentOrder(verified.order, verified.ref); // atomic CAS pending→paid
   if (!fresh) return { settled: true, duplicate: true }; // already processed
   // If the effect fails AFTER the order CAS'd to paid, revert the order to
-  // pending and rethrow — Fiuu's retry (or the payer reloading the return
-  // page) then reprocesses instead of being swallowed as a duplicate, so a
-  // real payment can never be silently lost (review finding 2026-08-06).
+  // pending and rethrow — the gateway's retry (or the payer reloading the
+  // return page) then reprocesses instead of being swallowed as a duplicate,
+  // so a real payment can never be silently lost (review finding 2026-08-06).
   try {
     if (fresh.kind === "booking_payment") {
-      await markBookingPaidAndDispatch(fresh.bookingId, `fiuu:${verified.tranID}`, "fiuu");
+      await markBookingPaidAndDispatch(fresh.bookingId, `${provider}:${verified.ref}`, provider);
     } else if (fresh.kind === "wallet_topup") {
       try {
         await applyWalletTransaction({
@@ -110,14 +111,14 @@ async function settleVerifiedFiuu(verified) {
           type: WALLET_TX_TYPE.TOPUP,
           amount: fresh.amountRm,
           orderRef: fresh.id, // UNIQUE — DB-level once-only credit
-          note: `Top-up via Fiuu (${fresh.id} / ${verified.tranID})`,
+          note: `Top-up via ${provider} (${fresh.id} / ${verified.ref})`,
         });
       } catch (err) {
         if (!isDuplicateMovement(err)) throw err;
       }
     }
   } catch (err) {
-    console.error(`fiuu settle effect failed for order ${fresh.id} — reverting to pending for retry:`, err);
+    console.error(`${provider} settle effect failed for order ${fresh.id} — reverting to pending for retry:`, err);
     await prisma.paymentOrder
       .updateMany({ where: { id: fresh.id, status: "paid" }, data: { status: "pending", gatewayRef: null, paidAt: null } })
       .catch((revertErr) => console.error(`CRITICAL: could not revert order ${fresh.id} — reconcile manually:`, revertErr));
@@ -130,7 +131,7 @@ router.post(
   "/fiuu/notify",
   asyncHandler(async (req, res) => {
     const verified = await verifyFiuuResponse(req.body);
-    if (verified.ok) await settleVerifiedFiuu(verified);
+    if (verified.ok) await settleVerifiedOrder({ ...verified, ref: verified.tranID }, "fiuu");
     // Fiuu's callback ACK token — always respond so it stops retrying;
     // invalid posts were rejected above and logged.
     res.type("text/plain").send("CBTOKEN:MPSTATOK");
@@ -146,12 +147,40 @@ router.post(
       res.status(400).send(landingPage("Payment could not be verified", "Return to the Lifeline app and check your booking."));
       return;
     }
-    await settleVerifiedFiuu(verified);
+    await settleVerifiedOrder({ ...verified, ref: verified.tranID }, "fiuu");
     // Deep-link back into the right app by order kind — parity with the
     // Stripe pages (review finding 2026-08-06).
     const scheme = verified.order.kind === "wallet_topup" ? "lifeline-operator" : "lifeline";
     res.send(
       verified.paid
+        ? landingPage("Payment received ✓", "Sending you back to the app…", scheme)
+        : landingPage("Payment not completed", "Return to the Lifeline app to try again.", scheme)
+    );
+  })
+);
+
+// ── HitPay: webhook (form-encoded, hmac-signed) is the only settling
+// channel; the browser redirect carries no signature, so /hitpay/return is
+// purely a deep-link back into the right app — the app then syncs booking /
+// wallet state from the server, which the webhook has (or will have) settled. ──
+router.post(
+  "/hitpay/notify",
+  asyncHandler(async (req, res) => {
+    const verified = await verifyHitpayCallback(req.body);
+    if (verified.ok) await settleVerifiedOrder({ ...verified, ref: verified.paymentId }, "hitpay");
+    // Non-2xx makes HitPay retry — invalid posts were rejected + logged above.
+    res.sendStatus(200);
+  })
+);
+
+router.get(
+  "/hitpay/return",
+  asyncHandler(async (req, res) => {
+    const order = await prisma.paymentOrder.findUnique({ where: { id: String(req.query.order || "") } });
+    const scheme = order?.kind === "wallet_topup" ? "lifeline-operator" : "lifeline";
+    const paid = order?.status === "paid" || String(req.query.status) === "completed";
+    res.send(
+      paid
         ? landingPage("Payment received ✓", "Sending you back to the app…", scheme)
         : landingPage("Payment not completed", "Return to the Lifeline app to try again.", scheme)
     );

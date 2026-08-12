@@ -21,9 +21,12 @@ export const config = {
   allowUnverifiedSocialAuth: process.env.ALLOW_UNVERIFIED_SOCIAL_AUTH === "true",
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
   appleClientId: process.env.APPLE_CLIENT_ID || null,
-  // Payment provider switch: "stripe" (default, reference implementation) or
-  // "fiuu" (Malaysian gateway — TNG/DuitNow/FPX/cards via hosted page).
-  paymentProvider: process.env.PAYMENT_PROVIDER === "fiuu" ? "fiuu" : "stripe",
+  // Payment provider switch: "stripe" (default, reference implementation),
+  // "fiuu" or "hitpay" (Malaysian gateways — TNG/DuitNow/FPX/cards via
+  // hosted page).
+  paymentProvider: ["fiuu", "hitpay"].includes(process.env.PAYMENT_PROVIDER)
+    ? process.env.PAYMENT_PROVIDER
+    : "stripe",
   // Stripe (test keys during the build; live keys are a human go-live
   // decision). Optional: card features 501 cleanly when absent.
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || null,
@@ -32,6 +35,13 @@ export const config = {
   fiuuVerifyKey: process.env.FIUU_VERIFY_KEY || null,
   fiuuSecretKey: process.env.FIUU_SECRET_KEY || null,
   fiuuSandbox: process.env.FIUU_SANDBOX !== "false", // default sandbox until go-live
+  // HitPay credentials (API key + salt from Dashboard → Settings → API Keys;
+  // the sandbox at sandbox.hit-pay.com is self-serve).
+  hitpayApiKey: process.env.HITPAY_API_KEY || null,
+  hitpaySalt: process.env.HITPAY_SALT || null,
+  hitpaySandbox: process.env.HITPAY_SANDBOX !== "false", // default sandbox until go-live
+  // Test hook: point the HitPay client at a mock server. Never set in prod.
+  hitpayApiBase: process.env.HITPAY_API_BASE || null,
   // Where hosted Checkout sends the browser back to (the API renders a tiny
   // "return to the app" page). Defaults to localhost for dev.
   publicApiUrl: process.env.PUBLIC_API_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 4000}`,

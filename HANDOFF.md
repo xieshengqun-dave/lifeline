@@ -229,6 +229,37 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-08-12 — HitPay wired as the primary Malaysian gateway + review cleanup done
+- **HitPay** (user: "can you wire hitpay instead?") is now the third provider behind
+  the payment boundary: `PAYMENT_PROVIDER=hitpay` + `HITPAY_API_KEY`/`HITPAY_SALT`
+  (Dashboard → Settings → API Keys; **sandbox.hit-pay.com is self-serve** — no
+  approval wait like Fiuu). Covers the must-haves in Malaysia: **TNG eWallet,
+  DuitNow QR**, FPX, cards, GrabPay/Boost via one hosted checkout.
+  - `services/providers/hitpay.js`: payment-request creation (REST,
+    `X-BUSINESS-API-KEY`), webhook verification (drop `hmac`, sort keys, concat
+    key+value, HMAC-SHA256 with the API salt, timing-safe compare), amount checked
+    against our PaymentOrder row; **refunds ARE wired** (`POST /v1/refund`,
+    confirmed against HitPay's own SDK) — cancel/no-operator refunds fire
+    automatically under hitpay (unlike fiuu, still manual-portal).
+  - Routes: `POST /api/payments/hitpay/notify` (settling channel, form-encoded),
+    `GET /api/payments/hitpay/return` (deep-link only — HitPay's redirect is
+    unsigned, so it never settles). `settleVerifiedOrder()` is now the shared
+    effect-first settle for fiuu + hitpay; the CAS moved to
+    `services/paymentOrders.js:settlePaymentOrder()`. Boot recovery now prefixes
+    paymentRef with the order's own provider.
+  - Verified via mock-gateway sim: 4 concurrent webhooks → 1 settle/1 dispatch,
+    provider=hitpay, tampered-amount webhook rejected, cancel → automatic refund
+    hit the refund API exactly once. Full suite green (27 tests).
+  - **To go live on sandbox**: register at sandbox.hit-pay.com, set the three
+    HITPAY_* vars + PAYMENT_PROVIDER=hitpay in backend/.env (and Railway), run a
+    real TNG/DuitNow test payment. Fiuu stays wired as a fallback if its sandbox
+    creds ever arrive.
+- **Review cleanup pass done** (commit 5aaa4c1): the 2026-08-07 leftovers —
+  expireBookingNoOperators()/armOrDispatchScheduled() replace 3× duplicated blocks,
+  getAllSettings() single fetch on dispatch + wallet route, PAYMENT_STATUS constants,
+  CAS-first expireOffer, shared retrievePaidSession(), TOPUP_MIN/MAX single source,
+  quote computes each fare once.
+
 ### 2026-08-07 — Money-path code review: 10 confirmed findings, all fixed
 - User requested a deep review of the payments/wallet layer before Fiuu goes
   live. 8 parallel review angles + adversarial verification found **10 confirmed

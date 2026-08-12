@@ -496,7 +496,13 @@ export async function recoverPaymentOrders() {
           select: { paidAt: true },
         });
         if (booking && !booking.paidAt) {
-          await markBookingPaidAndDispatch(order.bookingId, order.gatewayRef ? `fiuu:${order.gatewayRef}` : order.id, order.provider);
+          // paymentRef prefix must match the provider that settled the order
+          // ("fiuu:…" / "hitpay:…") so refund routing works after recovery.
+          await markBookingPaidAndDispatch(
+            order.bookingId,
+            order.gatewayRef ? `${order.provider}:${order.gatewayRef}` : order.id,
+            order.provider
+          );
           repaired++;
         }
       } else if (order.kind === "wallet_topup" && order.operatorId) {
