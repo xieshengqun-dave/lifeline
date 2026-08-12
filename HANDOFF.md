@@ -229,6 +229,37 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-08-07 — Money-path code review: 10 confirmed findings, all fixed
+- User requested a deep review of the payments/wallet layer before Fiuu goes
+  live. 8 parallel review angles + adversarial verification found **10 confirmed
+  defects, all sharing one root cause: non-atomic check-then-act on money state**.
+  All fixed in one pass (commit 74b8aa8):
+  - **CAS everywhere**: completion, cancel, accept/decline/expire, cascade
+    advance, paid-dispatch, and the unpaid sweep are compare-and-swap
+    transitions — concurrent duplicates lose with 409s instead of
+    double-settling, double-dispatching, re-offering refunded bookings, or
+    cancelling just-paid ones. acceptOffer now validates the BOOKING too.
+  - **DB-backed exactly-once**: WalletTransaction gained @@unique([bookingId,
+    type]) + unique orderRef; balances move by atomic increment (no
+    read-modify-write). Migration dedupes any pre-existing duplicate rows.
+  - **Fiuu settle is crash-safe**: effect-first with revert-to-pending on
+    failure (gateway retries reprocess); recoverPaymentOrders() at boot repairs
+    paid orders whose effects were lost mid-crash.
+  - **Stripe top-ups** settle through PaymentOrder + unique ledger ref
+    (note-substring dedup removed).
+  - **Provider integrity**: paymentProvider recorded from the settlement
+    source; refunds route by the booking's provider, never live config.
+  - "processing" card charges no longer open a second payment path — the sweep
+    reconciles them against Stripe; Stripe outages on confirm are logged and
+    surfaced (not swallowed); Fiuu landing pages deep-link like Stripe's.
+  - Verified live: 5 concurrent completions → 1 win/1 fee row; 4 concurrent
+    wallet movements → exact balance; concurrent cancels → 200+409; 4
+    concurrent Fiuu notifies → 1 dispatch with provider=fiuu. Suite green.
+  - Also added @@index([status, expiresAt]) on BookingOffer (sweep was a table
+    scan). Remaining review-noted cleanups (settings-row triple-fetch,
+    triplicated no-operators block, checkout-session duplication) are
+    efficiency/maintainability, not correctness — worth a pass someday.
+
 ### 2026-08-06 — Fiuu integration built (awaiting the user's sandbox credentials)
 - **Provider switch**: `PAYMENT_PROVIDER` env (`stripe` default | `fiuu`). All
   Stripe code untouched; `services/providers/fiuu.js` implements the Malaysian
