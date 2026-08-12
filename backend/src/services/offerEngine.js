@@ -6,8 +6,15 @@ import { computeFare, computeEtaMinutes } from "./pricing.js";
 import { getPlatformFeeSetting, getOfferTimeoutSeconds } from "./settings.js";
 import { BOOKING_STATUS, OFFER_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
 import { pushToUser, pushToOperator } from "./push.js";
-import { chargeServiceFee, creditTripEarning, canCoverFee } from "./wallet.js";
-import { refundBookingPayment } from "./payment.js";
+import {
+  chargeServiceFee,
+  creditTripEarning,
+  canCoverFee,
+  applyWalletTransaction,
+  WALLET_TX_TYPE,
+  isDuplicateMovement,
+} from "./wallet.js";
+import { refundBookingPayment, checkPaymentRefStatus } from "./payment.js";
 import { HttpError } from "../middleware/errorHandler.js";
 
 // In-memory timers, keyed by BookingOffer.id. BookingOffer.expiresAt is the
@@ -202,9 +209,9 @@ async function refundPrepaidBooking(booking, reason) {
     });
   } else {
     console.error(
-      `REFUND FAILED for booking ${booking.id} (${result.reason}) — refund manually in the Stripe dashboard`
+      `REFUND REQUIRED for booking ${booking.id} (${result.reason}) — process manually via the ${booking.paymentProvider || "payment"} provider's dashboard/portal`
     );
-    await addTrackingEvent(booking.id, "Refund Failed — Contact Support");
+    await addTrackingEvent(booking.id, "Refund Being Processed — Contact Support If Not Received");
   }
 }
 
@@ -215,7 +222,15 @@ export async function advanceToNextOperator(bookingId, reason) {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { offers: true } });
   if (!booking) throw new HttpError(404, "not_found", "Booking not found");
 
-  await prisma.booking.update({ where: { id: bookingId }, data: { status: BOOKING_STATUS.DECLINED } });
+  // CAS from OFFERED only — if the patient cancelled (and was refunded) or
+  // the booking otherwise left the race while this decline/timeout was in
+  // flight, stop the cascade instead of resurrecting a dead booking
+  // (review finding 2026-08-06).
+  const gate = await prisma.booking.updateMany({
+    where: { id: bookingId, status: BOOKING_STATUS.OFFERED },
+    data: { status: BOOKING_STATUS.DECLINED },
+  });
+  if (gate.count === 0) return booking;
   await addTrackingEvent(bookingId, "Operator Declined — Searching Next");
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: BOOKING_STATUS.DECLINED, reason });
 
@@ -381,30 +396,40 @@ async function dispatchImmediate(booking, chosenOperatorId = booking.preferredOp
 // The payment landed (instant linked-card charge or verified Checkout
 // session) — record it and start the operator race. Idempotent on repeat
 // confirms; money arriving for an already-dead booking is refunded in full.
-export async function markBookingPaidAndDispatch(bookingId, paymentRef) {
+export async function markBookingPaidAndDispatch(bookingId, paymentRef, provider) {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!booking) throw new HttpError(404, "not_found", "Booking not found");
   if (booking.paidAt) return booking;
 
-  if (booking.status !== BOOKING_STATUS.PENDING_PAYMENT) {
+  // CAS from PENDING_PAYMENT — exactly one confirm wins; a concurrent
+  // duplicate confirm falls through to the idempotent re-read below instead
+  // of double-dispatching (review finding 2026-08-06). Provider is recorded
+  // from the actual settlement source, never hardcoded.
+  const gate = await prisma.booking.updateMany({
+    where: { id: bookingId, status: BOOKING_STATUS.PENDING_PAYMENT },
+    data: {
+      paymentRef,
+      paidAt: new Date(),
+      paymentStatus: "paid",
+      paymentProvider: provider,
+      status: BOOKING_STATUS.REQUESTED,
+    },
+  });
+
+  if (gate.count === 0) {
+    const fresh = await prisma.booking.findUnique({ where: { id: bookingId } });
+    if (fresh.paidAt) return fresh; // concurrent confirm won — idempotent
+    // Money arrived for a booking that already died (payment-timeout cancel,
+    // etc.): record the payment so the ref is never lost, then refund it.
     const stale = await prisma.booking.update({
       where: { id: bookingId },
-      data: { paymentRef, paidAt: new Date(), paymentStatus: "paid", paymentProvider: "stripe" },
+      data: { paymentRef, paidAt: new Date(), paymentStatus: "paid", paymentProvider: provider },
     });
     await refundPrepaidBooking(stale, "cancelled");
     return stale;
   }
 
-  const paid = await prisma.booking.update({
-    where: { id: bookingId },
-    data: {
-      paymentRef,
-      paidAt: new Date(),
-      paymentStatus: "paid",
-      paymentProvider: "stripe",
-      status: BOOKING_STATUS.REQUESTED,
-    },
-  });
+  const paid = await prisma.booking.findUnique({ where: { id: bookingId } });
   await addTrackingEvent(bookingId, "Payment Received");
   emitToBooking(bookingId, "booking:status_changed", {
     bookingId,
@@ -468,6 +493,48 @@ export async function dispatchScheduledBooking(bookingId) {
   return updated;
 }
 
+// Boot-time recovery for the settle crash window: a PaymentOrder that CAS'd
+// to "paid" whose effect (dispatch / wallet credit) never landed because the
+// process died in between. Re-running the effect is safe — the booking gate
+// and the ledger's unique orderRef make both idempotent.
+export async function recoverPaymentOrders() {
+  const paid = await prisma.paymentOrder.findMany({ where: { status: "paid" } });
+  let repaired = 0;
+  for (const order of paid) {
+    try {
+      if (order.kind === "booking_payment" && order.bookingId) {
+        const booking = await prisma.booking.findUnique({
+          where: { id: order.bookingId },
+          select: { paidAt: true },
+        });
+        if (booking && !booking.paidAt) {
+          await markBookingPaidAndDispatch(order.bookingId, order.gatewayRef ? `fiuu:${order.gatewayRef}` : order.id, order.provider);
+          repaired++;
+        }
+      } else if (order.kind === "wallet_topup" && order.operatorId) {
+        const credited = await prisma.walletTransaction.findUnique({ where: { orderRef: order.id } });
+        if (!credited) {
+          try {
+            await applyWalletTransaction({
+              operatorId: order.operatorId,
+              type: WALLET_TX_TYPE.TOPUP,
+              amount: order.amountRm,
+              orderRef: order.id,
+              note: `Top-up (recovered at boot, order ${order.id})`,
+            });
+            repaired++;
+          } catch (err) {
+            if (!isDuplicateMovement(err)) throw err;
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`recoverPaymentOrders(${order.id}) failed — reconcile manually:`, err);
+    }
+  }
+  if (repaired) console.log(`Recovered ${repaired} paid payment order(s) with missing effects`);
+}
+
 // Boot-time recovery for scheduled bookings that haven't been dispatched yet
 // (mirrors recoverPendingOffers): dispatch overdue ones now, re-arm timers
 // for the rest.
@@ -500,15 +567,34 @@ export async function acceptOffer(offerId, operatorId) {
   if (offer.operatorId !== operatorId) throw new HttpError(403, "forbidden", "Not your offer");
   if (offer.status !== OFFER_STATUS.PENDING) throw new HttpError(409, "offer_not_pending", "Offer already resolved");
 
-  clearOfferTimeout(offerId);
-  await prisma.bookingOffer.update({
-    where: { id: offerId },
+  // CAS the offer flip — a racing timeout/cancel loses cleanly.
+  const offerGate = await prisma.bookingOffer.updateMany({
+    where: { id: offerId, status: OFFER_STATUS.PENDING },
     data: { status: OFFER_STATUS.ACCEPTED, respondedAt: new Date() },
   });
-  const booking = await prisma.booking.update({
-    where: { id: offer.bookingId },
+  if (offerGate.count === 0) throw new HttpError(409, "offer_not_pending", "Offer already resolved");
+  clearOfferTimeout(offerId);
+
+  // CAS the booking too, keyed to THIS operator being the current one: a
+  // cancelled/refunded or already-accepted booking can't be accepted
+  // (review finding 2026-08-06 — accept validated only the offer before).
+  const bookingGate = await prisma.booking.updateMany({
+    where: {
+      id: offer.bookingId,
+      operatorId,
+      status: { in: [BOOKING_STATUS.OFFERED, BOOKING_STATUS.DECLINED] },
+    },
     data: { status: BOOKING_STATUS.ACCEPTED },
   });
+  if (bookingGate.count === 0) {
+    // Undo the offer flip so the ledger of offers reflects reality.
+    await prisma.bookingOffer.update({
+      where: { id: offerId },
+      data: { status: OFFER_STATUS.CANCELLED },
+    });
+    throw new HttpError(409, "booking_unavailable", "This booking is no longer available");
+  }
+  const booking = await prisma.booking.findUnique({ where: { id: offer.bookingId } });
   await addTrackingEvent(booking.id, "Accepted");
   emitToBooking(booking.id, "booking:status_changed", { bookingId: booking.id, status: BOOKING_STATUS.ACCEPTED });
   // Scheduled bookings: the patient isn't watching a Waiting screen when the
@@ -529,11 +615,12 @@ export async function declineOffer(offerId, operatorId) {
   if (offer.operatorId !== operatorId) throw new HttpError(403, "forbidden", "Not your offer");
   if (offer.status !== OFFER_STATUS.PENDING) throw new HttpError(409, "offer_not_pending", "Offer already resolved");
 
-  clearOfferTimeout(offerId);
-  await prisma.bookingOffer.update({
-    where: { id: offerId },
+  const gate = await prisma.bookingOffer.updateMany({
+    where: { id: offerId, status: OFFER_STATUS.PENDING },
     data: { status: OFFER_STATUS.DECLINED, respondedAt: new Date() },
   });
+  if (gate.count === 0) throw new HttpError(409, "offer_not_pending", "Offer already resolved");
+  clearOfferTimeout(offerId);
   return advanceToNextOperator(offer.bookingId, "operator_declined");
 }
 
@@ -544,11 +631,14 @@ export async function expireOffer(offerId) {
   const offer = await prisma.bookingOffer.findUnique({ where: { id: offerId } });
   if (!offer || offer.status !== OFFER_STATUS.PENDING) return;
 
-  clearOfferTimeout(offerId);
-  await prisma.bookingOffer.update({
-    where: { id: offerId },
+  // CAS — the timer and the sweep (and a racing accept) can all fire for the
+  // same offer; exactly one wins the flip and advances the cascade.
+  const gate = await prisma.bookingOffer.updateMany({
+    where: { id: offerId, status: OFFER_STATUS.PENDING },
     data: { status: OFFER_STATUS.TIMED_OUT, respondedAt: new Date() },
   });
+  if (gate.count === 0) return;
+  clearOfferTimeout(offerId);
   return advanceToNextOperator(offer.bookingId, "timed_out");
 }
 
@@ -594,10 +684,16 @@ export async function cancelBooking(bookingId, userId) {
   // Scheduled booking cancelled before dispatch — stop the pending dispatch.
   clearDispatchTimer(bookingId);
 
-  const updated = await prisma.booking.update({
-    where: { id: bookingId },
+  // CAS: only cancel from the status we validated. If completion (or another
+  // cancel) won the race, bail with 409 — never refund a completed trip.
+  const gate = await prisma.booking.updateMany({
+    where: { id: bookingId, status: booking.status },
     data: { status: BOOKING_STATUS.CANCELLED },
   });
+  if (gate.count === 0) {
+    throw new HttpError(409, "not_cancellable", "Booking status changed — refresh to see the latest state");
+  }
+  const updated = await prisma.booking.findUnique({ where: { id: bookingId } });
   await addTrackingEvent(bookingId, "Cancelled");
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: BOOKING_STATUS.CANCELLED });
   // Prepaid cancellations refund in full (v1 policy — no cancellation fee;
@@ -629,7 +725,17 @@ export async function advanceBookingStatus(bookingId, operatorId, targetStatus) 
     throw new HttpError(409, "invalid_transition", `Cannot move from ${booking.status} to ${targetStatus}`);
   }
 
-  const updated = await prisma.booking.update({ where: { id: bookingId }, data: { status: targetStatus } });
+  // Compare-and-swap on the status we validated against — a concurrent
+  // transition (double-tap, retry, racing cancel) loses cleanly with a 409
+  // instead of double-settling (review finding 2026-08-06).
+  const gate = await prisma.booking.updateMany({
+    where: { id: bookingId, status: booking.status },
+    data: { status: targetStatus },
+  });
+  if (gate.count === 0) {
+    throw new HttpError(409, "invalid_transition", "Booking status changed concurrently — refresh and retry");
+  }
+  const updated = await prisma.booking.findUnique({ where: { id: bookingId } });
   await addTrackingEvent(bookingId, STATUS_LABELS[targetStatus] || targetStatus);
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: targetStatus });
 
@@ -697,9 +803,11 @@ export function startOfferSweep() {
       );
     }
 
-    // Prepaid bookings whose payment never arrived: cancel after 15 minutes
-    // so they don't linger forever. A payment that lands AFTER this cancel
-    // is refunded by markBookingPaidAndDispatch's stale-booking guard.
+    // Prepaid bookings whose payment never arrived: cancel after 15 minutes.
+    // The cancel is a CAS on PENDING_PAYMENT so a payment landing mid-sweep
+    // can never be clobbered (review finding 2026-08-06); an in-flight card
+    // charge ("processing") is reconciled against the provider first; and
+    // the cancelled row still runs the refund guard in case money was taken.
     const stale = await prisma.booking.findMany({
       where: {
         status: BOOKING_STATUS.PENDING_PAYMENT,
@@ -707,10 +815,33 @@ export function startOfferSweep() {
       },
     });
     for (const booking of stale) {
-      await prisma.booking
-        .update({ where: { id: booking.id }, data: { status: BOOKING_STATUS.CANCELLED } })
-        .then(() => addTrackingEvent(booking.id, "Payment Not Completed — Booking Cancelled"))
-        .catch((err) => console.error(`sweep cancel unpaid(${booking.id}) failed:`, err));
+      try {
+        // A stored paymentRef with no paidAt = a charge that was still
+        // "processing" when created. Ask the provider before deciding.
+        if (booking.paymentRef && !booking.paidAt) {
+          const check = await checkPaymentRefStatus(booking.paymentRef);
+          if (check.status === "succeeded") {
+            await markBookingPaidAndDispatch(booking.id, booking.paymentRef, booking.paymentProvider || "stripe");
+            continue;
+          }
+          if (check.status === "processing") continue; // decide next sweep
+        }
+        const gate = await prisma.booking.updateMany({
+          where: { id: booking.id, status: BOOKING_STATUS.PENDING_PAYMENT },
+          data: { status: BOOKING_STATUS.CANCELLED },
+        });
+        if (gate.count === 0) continue; // payment won the race — leave it be
+        await addTrackingEvent(booking.id, "Payment Not Completed — Booking Cancelled");
+        emitToBooking(booking.id, "booking:status_changed", {
+          bookingId: booking.id,
+          status: BOOKING_STATUS.CANCELLED,
+          reason: "payment_timeout",
+        });
+        const cancelled = await prisma.booking.findUnique({ where: { id: booking.id } });
+        await refundPrepaidBooking(cancelled, "cancelled"); // no-op unless money was taken
+      } catch (err) {
+        console.error(`sweep cancel unpaid(${booking.id}) failed:`, err);
+      }
     }
   }, config.offerSweepIntervalSeconds * 1000);
 }

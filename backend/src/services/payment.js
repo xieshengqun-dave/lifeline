@@ -2,7 +2,7 @@ import Stripe from "stripe";
 import { prisma } from "../lib/prisma.js";
 import { config } from "../lib/env.js";
 import { HttpError } from "../middleware/errorHandler.js";
-import { applyWalletTransaction, WALLET_TX_TYPE } from "./wallet.js";
+import { applyWalletTransaction, WALLET_TX_TYPE, isDuplicateMovement } from "./wallet.js";
 
 // THE provider boundary: every Stripe call in the codebase lives in this
 // file, so a future provider switch (iPay88/Razer/…) rewrites one module.
@@ -82,9 +82,25 @@ export async function unlinkCard(userId) {
   await Promise.all(methods.data.map((pm) => s.paymentMethods.detach(pm.id)));
 }
 
-// ── Card trip: charge the saved card off-session on completion. Returns
-// { charged: true } or { charged: false, reason } — the caller falls back to
-// the cash flow on failure and NEVER blocks trip completion. ──
+// ── Pay-first: the linked card is charged off-session AT BOOKING TIME
+// (bookings.routes.js). Returns { charged:true }, { charged:false,
+// pending:true } for an in-flight "processing" intent (caller must NOT offer
+// another payment path), or { charged:false, reason } — where the caller
+// falls back to a hosted-Checkout URL, never to cash. ──
+
+// Provider-agnostic ref status check for reconciliation (the pending_payment
+// sweep). Fiuu refs settle via notify/return, never via this path.
+export async function checkPaymentRefStatus(paymentRef) {
+  if (!paymentRef || paymentRef.startsWith("fiuu:") || !stripe) return { status: "unknown" };
+  try {
+    const intent = await stripe.paymentIntents.retrieve(paymentRef);
+    return { status: intent.status };
+  } catch (err) {
+    console.error(`checkPaymentRefStatus(${paymentRef}) failed:`, err.message);
+    return { status: "unknown" };
+  }
+}
+
 export async function chargeBookingCard(booking) {
   if (!cardVaultAvailable()) return { charged: false, reason: "no_card_vault" };
   const user = await prisma.user.findUnique({
@@ -107,8 +123,14 @@ export async function chargeBookingCard(booking) {
       description: `Lifeline trip ${booking.id} — ${booking.pickupName} → ${booking.destinationName}`,
       metadata: { bookingId: booking.id },
     });
-    if (intent.status !== "succeeded") return { charged: false, reason: intent.status };
-    return { charged: true, paymentIntentId: intent.id };
+    if (intent.status === "succeeded") return { charged: true, paymentIntentId: intent.id };
+    // "processing" is money possibly in flight — the caller must NOT offer a
+    // second payment path (double-charge risk, review finding 2026-08-06);
+    // the pending_payment sweep reconciles it against Stripe later.
+    if (intent.status === "processing") {
+      return { charged: false, pending: true, paymentIntentId: intent.id, reason: "processing" };
+    }
+    return { charged: false, reason: intent.status };
   } catch (err) {
     return { charged: false, reason: err.code || err.message };
   }
@@ -158,8 +180,14 @@ export async function confirmBookingPayment(sessionId) {
   let session;
   try {
     session = await s.checkout.sessions.retrieve(sessionId);
-  } catch {
-    return { paid: false }; // unknown/garbled session id — not a server error
+  } catch (err) {
+    // Only a genuinely-unknown session id is "not paid". Anything else
+    // (outage, auth, network) must surface loudly — swallowing it turns a
+    // paid booking into "Payment not completed" with no server trace
+    // (CLAUDE.md: never silently swallow errors on the booking path).
+    if (err?.code === "resource_missing") return { paid: false };
+    console.error(`confirmBookingPayment(${sessionId}) Stripe error:`, err.message);
+    throw err;
   }
   if (session.payment_status !== "paid" || session.metadata?.kind !== "booking_payment") {
     return { paid: false };
@@ -176,11 +204,17 @@ export async function confirmBookingPayment(sessionId) {
 // Caller is responsible for guarding idempotency via paymentStatus/refundedAt
 // before calling; this just executes the provider refund.
 export async function refundBookingPayment(booking) {
-  if (usingFiuu()) {
+  // Route by the provider THAT TOOK THE PAYMENT (recorded on the booking) —
+  // never by current server config, which may have been switched since
+  // (review finding 2026-08-06). Legacy rows without a recorded provider
+  // fall back to the ref prefix, then config.
+  const paidVia =
+    booking.paymentProvider || (booking.paymentRef?.startsWith("fiuu:") ? "fiuu" : config.paymentProvider);
+  if (paidVia === "fiuu") {
     // Fiuu Refund API deliberately not wired until its spec is verified
     // against the sandbox — the engine logs this loudly and the refund is
     // processed manually in the Fiuu merchant portal for now.
-    return { refunded: false, reason: "fiuu_refund_manual — process in the Fiuu portal" };
+    return { refunded: false, reason: "fiuu_refund_manual — process in the FIUU merchant portal" };
   }
   const s = requireStripe();
   if (!booking.paymentRef) return { refunded: false, reason: "no_payment_ref" };
@@ -208,6 +242,12 @@ export async function createTopupSession(operatorId, amountRm) {
     return createFiuuTopup(operatorId, amountRm, operator);
   }
   const s = requireStripe();
+  // PaymentOrder gives the top-up a proper atomic settlement gate — the
+  // note-substring dedup this replaces could double-credit on concurrent
+  // confirms (review finding 2026-08-06).
+  const order = await prisma.paymentOrder.create({
+    data: { kind: "wallet_topup", operatorId, amountRm, provider: "stripe" },
+  });
   const session = await s.checkout.sessions.create({
     mode: "payment",
     currency: CURRENCY,
@@ -221,7 +261,7 @@ export async function createTopupSession(operatorId, amountRm) {
         quantity: 1,
       },
     ],
-    metadata: { lifelineOperatorId: operatorId, kind: "wallet_topup" },
+    metadata: { lifelineOperatorId: operatorId, kind: "wallet_topup", orderId: order.id },
     success_url: `${config.publicApiUrl}/api/payments/topup/confirm?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${config.publicApiUrl}/api/payments/return?outcome=cancelled`,
   });
@@ -235,22 +275,36 @@ export async function confirmTopup(sessionId) {
   let session;
   try {
     session = await s.checkout.sessions.retrieve(sessionId);
-  } catch {
-    return { credited: false }; // unknown/garbled session id — not a server error
+  } catch (err) {
+    if (err?.code === "resource_missing") return { credited: false };
+    console.error(`confirmTopup(${sessionId}) Stripe error:`, err.message);
+    throw err;
   }
   if (session.payment_status !== "paid" || session.metadata?.kind !== "wallet_topup") {
     return { credited: false };
   }
   const operatorId = session.metadata.lifelineOperatorId;
-  const already = await prisma.walletTransaction.findFirst({
-    where: { operatorId, type: WALLET_TX_TYPE.TOPUP, note: { contains: sessionId } },
-  });
-  if (already) return { credited: true, duplicate: true };
-  await applyWalletTransaction({
-    operatorId,
-    type: WALLET_TX_TYPE.TOPUP,
-    amount: session.amount_total / 100,
-    note: `Card top-up via Stripe (${sessionId})`,
-  });
+  const orderId = session.metadata.orderId;
+
+  // Atomic once-only credit: the ledger row carries a UNIQUE orderRef, so
+  // even fully concurrent confirms can't double-credit — the second insert
+  // hits the constraint and is treated as already-done.
+  try {
+    await applyWalletTransaction({
+      operatorId,
+      type: WALLET_TX_TYPE.TOPUP,
+      amount: session.amount_total / 100,
+      orderRef: orderId || `stripe-session:${sessionId}`, // legacy sessions lack orderId
+      note: `Card top-up via Stripe (${sessionId})`,
+    });
+  } catch (err) {
+    if (isDuplicateMovement(err)) return { credited: true, duplicate: true };
+    throw err;
+  }
+  if (orderId) {
+    await prisma.paymentOrder
+      .updateMany({ where: { id: orderId, status: "pending" }, data: { status: "paid", gatewayRef: sessionId, paidAt: new Date() } })
+      .catch(() => {});
+  }
   return { credited: true };
 }

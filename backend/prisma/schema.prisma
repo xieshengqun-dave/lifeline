@@ -137,9 +137,13 @@ model WalletTransaction {
   amount       Float // signed: credits positive, debits negative
   balanceAfter Float // denormalized audit trail
   bookingId    String? // set for service_fee / trip_earning rows
+  orderRef     String? @unique // PaymentOrder id for top-ups — DB-level once-only credit
   note         String? // e.g. "Manual top-up — bank transfer ref 1234"
   createdAt    DateTime @default(now())
 
+  // One fee row and one earning row per booking, enforced by the DB — the
+  // backstop against concurrent double settlement (nulls don't collide).
+  @@unique([bookingId, type])
   @@index([operatorId, createdAt])
 }
 
@@ -237,6 +241,7 @@ model BookingOffer {
   @@unique([bookingId, operatorId]) // never offer the same operator twice for one booking
   @@index([bookingId])
   @@index([operatorId, status])
+  @@index([status, expiresAt]) // the sweep's expiry scan — keeps it off a table scan
 }
 
 // ── Tracking timeline ──

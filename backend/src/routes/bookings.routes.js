@@ -173,10 +173,19 @@ router.post(
       if (paymentMethod === "card") {
         const charge = await chargeBookingCard(booking);
         if (charge.charged) {
-          finalBooking = await markBookingPaidAndDispatch(booking.id, charge.paymentIntentId);
+          finalBooking = await markBookingPaidAndDispatch(booking.id, charge.paymentIntentId, "stripe");
+        } else if (charge.pending) {
+          // Charge is "processing" — money may be in flight, so do NOT open
+          // a second payment path (double-charge risk). Store the ref; the
+          // sweep reconciles it against the provider and either dispatches
+          // or cancels+refunds.
+          finalBooking = await prisma.booking.update({
+            where: { id: booking.id },
+            data: { paymentRef: charge.paymentIntentId, paymentProvider: "stripe" },
+          });
         } else {
-          // Linked card failed — hand back a checkout URL so the patient can
-          // pay another way instead of dying here.
+          // Linked card declined outright — hand back a checkout URL so the
+          // patient can pay another way instead of dying here.
           ({ url: checkoutUrl } = await createBookingPaymentSession(booking));
         }
       } else {

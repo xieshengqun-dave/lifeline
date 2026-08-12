@@ -16,7 +16,8 @@ import {
 } from "../services/payment.js";
 import { markBookingPaidAndDispatch } from "../services/offerEngine.js";
 import { verifyFiuuResponse, settleFiuuOrder } from "../services/providers/fiuu.js";
-import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
+import { applyWalletTransaction, WALLET_TX_TYPE, isDuplicateMovement } from "../services/wallet.js";
+import { prisma } from "../lib/prisma.js";
 
 const router = Router();
 
@@ -77,7 +78,7 @@ router.get(
       res.status(400).send(landingPage("Payment not completed", "Return to the Lifeline app to try again.", "lifeline"));
       return;
     }
-    await markBookingPaidAndDispatch(result.bookingId, result.paymentRef);
+    await markBookingPaidAndDispatch(result.bookingId, result.paymentRef, "stripe");
     res.send(
       landingPage("Payment received ✓", "We're finding your ambulance now — sending you back to the app…", "lifeline")
     );
@@ -93,15 +94,32 @@ async function settleVerifiedFiuu(verified) {
   if (!verified.paid) return { settled: false };
   const fresh = await settleFiuuOrder(verified.order, verified.tranID);
   if (!fresh) return { settled: true, duplicate: true }; // already processed
-  if (fresh.kind === "booking_payment") {
-    await markBookingPaidAndDispatch(fresh.bookingId, `fiuu:${verified.tranID}`);
-  } else if (fresh.kind === "wallet_topup") {
-    await applyWalletTransaction({
-      operatorId: fresh.operatorId,
-      type: WALLET_TX_TYPE.TOPUP,
-      amount: fresh.amountRm,
-      note: `Top-up via Fiuu (${fresh.id} / ${verified.tranID})`,
-    });
+  // If the effect fails AFTER the order CAS'd to paid, revert the order to
+  // pending and rethrow — Fiuu's retry (or the payer reloading the return
+  // page) then reprocesses instead of being swallowed as a duplicate, so a
+  // real payment can never be silently lost (review finding 2026-08-06).
+  try {
+    if (fresh.kind === "booking_payment") {
+      await markBookingPaidAndDispatch(fresh.bookingId, `fiuu:${verified.tranID}`, "fiuu");
+    } else if (fresh.kind === "wallet_topup") {
+      try {
+        await applyWalletTransaction({
+          operatorId: fresh.operatorId,
+          type: WALLET_TX_TYPE.TOPUP,
+          amount: fresh.amountRm,
+          orderRef: fresh.id, // UNIQUE — DB-level once-only credit
+          note: `Top-up via Fiuu (${fresh.id} / ${verified.tranID})`,
+        });
+      } catch (err) {
+        if (!isDuplicateMovement(err)) throw err;
+      }
+    }
+  } catch (err) {
+    console.error(`fiuu settle effect failed for order ${fresh.id} — reverting to pending for retry:`, err);
+    await prisma.paymentOrder
+      .updateMany({ where: { id: fresh.id, status: "paid" }, data: { status: "pending", gatewayRef: null, paidAt: null } })
+      .catch((revertErr) => console.error(`CRITICAL: could not revert order ${fresh.id} — reconcile manually:`, revertErr));
+    throw err;
   }
   return { settled: true };
 }
@@ -127,10 +145,13 @@ router.post(
       return;
     }
     await settleVerifiedFiuu(verified);
+    // Deep-link back into the right app by order kind — parity with the
+    // Stripe pages (review finding 2026-08-06).
+    const scheme = verified.order.kind === "wallet_topup" ? "lifeline-operator" : "lifeline";
     res.send(
       verified.paid
-        ? landingPage("Payment received ✓", "Return to the Lifeline app — everything continues automatically.")
-        : landingPage("Payment not completed", "Return to the Lifeline app to try again.")
+        ? landingPage("Payment received ✓", "Sending you back to the app…", scheme)
+        : landingPage("Payment not completed", "Return to the Lifeline app to try again.", scheme)
     );
   })
 );

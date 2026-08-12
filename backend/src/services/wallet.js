@@ -19,7 +19,7 @@ export const WALLET_TX_TYPE = Object.freeze({
 const CREDIT_TYPES = new Set([WALLET_TX_TYPE.TOPUP, WALLET_TX_TYPE.TRIP_EARNING]);
 const DEBIT_TYPES = new Set([WALLET_TX_TYPE.SERVICE_FEE, WALLET_TX_TYPE.WITHDRAWAL]);
 
-export async function applyWalletTransaction({ operatorId, type, amount, bookingId, note }) {
+export async function applyWalletTransaction({ operatorId, type, amount, bookingId, orderRef, note }) {
   if (!Number.isFinite(amount) || amount === 0) {
     throw new HttpError(400, "invalid_amount", "Amount must be a non-zero number");
   }
@@ -31,20 +31,32 @@ export async function applyWalletTransaction({ operatorId, type, amount, booking
   }
 
   return prisma.$transaction(async (tx) => {
-    const operator = await tx.operator.findUnique({
-      where: { id: operatorId },
-      select: { walletBalance: true },
-    });
-    if (!operator) throw new HttpError(404, "not_found", "Operator not found");
-
-    const balanceAfter = Math.round((operator.walletBalance + amount) * 100) / 100;
-    await tx.operator.update({ where: { id: operatorId }, data: { walletBalance: balanceAfter } });
+    // Atomic increment — no read-modify-write, so concurrent movements can't
+    // lose each other (review finding 2026-08-06). balanceAfter is read back
+    // from the same atomic update inside the transaction.
+    let updated;
+    try {
+      updated = await tx.operator.update({
+        where: { id: operatorId },
+        data: { walletBalance: { increment: amount } },
+        select: { walletBalance: true },
+      });
+    } catch (err) {
+      if (err.code === "P2025") throw new HttpError(404, "not_found", "Operator not found");
+      throw err;
+    }
+    const balanceAfter = Math.round(updated.walletBalance * 100) / 100;
     const row = await tx.walletTransaction.create({
-      data: { operatorId, type, amount, balanceAfter, bookingId, note },
+      data: { operatorId, type, amount, balanceAfter, bookingId, orderRef, note },
     });
     return row;
   });
 }
+
+// A P2002 unique violation on (bookingId, type) or orderRef means another
+// concurrent request already posted this exact movement — the DB is the
+// final idempotency arbiter; callers treat it as already-done.
+export const isDuplicateMovement = (err) => err?.code === "P2002";
 
 // Fee for a completed trip. Idempotent per booking: a second completion
 // attempt (409-guarded upstream anyway) can't double-charge. Deducts even if
@@ -53,17 +65,19 @@ export async function applyWalletTransaction({ operatorId, type, amount, booking
 // drained the float in between; the ledger records reality).
 export async function chargeServiceFee(booking) {
   if (!booking.operatorId || !booking.serviceFee || booking.serviceFee <= 0) return null;
-  const existing = await prisma.walletTransaction.findFirst({
-    where: { bookingId: booking.id, type: WALLET_TX_TYPE.SERVICE_FEE },
-  });
-  if (existing) return existing;
-  return applyWalletTransaction({
-    operatorId: booking.operatorId,
-    type: WALLET_TX_TYPE.SERVICE_FEE,
-    amount: -booking.serviceFee,
-    bookingId: booking.id,
-    note: `Platform fee — trip ${booking.pickupName} → ${booking.destinationName}`,
-  });
+  try {
+    return await applyWalletTransaction({
+      operatorId: booking.operatorId,
+      type: WALLET_TX_TYPE.SERVICE_FEE,
+      amount: -booking.serviceFee,
+      bookingId: booking.id,
+      note: `Platform fee — trip ${booking.pickupName} → ${booking.destinationName}`,
+    });
+  } catch (err) {
+    // (bookingId, type) unique: a concurrent settle already posted the fee.
+    if (isDuplicateMovement(err)) return null;
+    throw err;
+  }
 }
 
 // Prepaid trip settled through the platform. Two-line ledger (design spec,
@@ -73,17 +87,18 @@ export async function chargeServiceFee(booking) {
 // the fee deduction — the operator holds the fare in hand.)
 export async function creditTripEarning(booking) {
   if (!booking.operatorId || !booking.total || booking.total <= 0) return null;
-  const existing = await prisma.walletTransaction.findFirst({
-    where: { bookingId: booking.id, type: WALLET_TX_TYPE.TRIP_EARNING },
-  });
-  if (existing) return existing;
-  return applyWalletTransaction({
-    operatorId: booking.operatorId,
-    type: WALLET_TX_TYPE.TRIP_EARNING,
-    amount: booking.total,
-    bookingId: booking.id,
-    note: `Trip fare — ${booking.pickupName} → ${booking.destinationName}`,
-  });
+  try {
+    return await applyWalletTransaction({
+      operatorId: booking.operatorId,
+      type: WALLET_TX_TYPE.TRIP_EARNING,
+      amount: booking.total,
+      bookingId: booking.id,
+      note: `Trip fare — ${booking.pickupName} → ${booking.destinationName}`,
+    });
+  } catch (err) {
+    if (isDuplicateMovement(err)) return null;
+    throw err;
+  }
 }
 
 // Offer-time gate (decided 2026-07-31): an operator only receives a job if
