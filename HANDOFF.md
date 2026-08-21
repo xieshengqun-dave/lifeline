@@ -245,13 +245,16 @@ bug came out of it:
   Cancelled"), and prod DB was reseeded with the 6 Klang operators (idempotent
   seed via the Postgres public URL; `railway run` injects the internal-only host,
   so export `DATABASE_PUBLIC_URL` from the Postgres service instead).
-- **⚠ Refund caveat (human follow-up)**: cancelling the PAID booking hit the real
-  refund API and HitPay 422'd — *"refunds are not supported for the payment
-  method"*: **TNG eWallet charges can't be refunded via API** (cards can). The
-  engine did the right thing: booking cancelled cleanly + loud `REFUND REQUIRED …
-  process manually` log. Action: ask HitPay support whether e-wallet refunds are
-  possible in production accounts; until then e-wallet refunds = manual dashboard
-  step, which affects the no-operator/cancel auto-refund promise for TNG payers.
+- **⚠ Refund timing caveat (corrected by user, 2026-08-21)**: cancelling the PAID
+  booking seconds after payment hit the real refund API and HitPay 422'd ("has
+  not been confirmed yet or refunds are not supported"). Per HitPay's docs
+  (docs.hitpayapp.com/payment-methods/touchngo) **TNG refunds ARE supported** —
+  but **charge confirmation is T+2 (MY)**, so a refund attempted before the
+  charge confirms fails. Consequence: instant auto-refunds (cancel right after
+  paying, no-operators expiry) will 422 inside the confirmation window and land
+  in the loud `REFUND REQUIRED … process manually` log. Options for later: a
+  pending-refund retry sweep (retry failed refunds daily until the charge
+  confirms) — flagged, not built; needs a decision.
 - Local dev note: HitPay rejects `localhost` webhook URLs (422 on payment-request
   creation), so paid-flow testing must run against Railway (or a tunnel). Also:
   HitPay's sandbox checkout requires the merchant to finish onboarding + enable
