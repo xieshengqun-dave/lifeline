@@ -16,6 +16,9 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET,
   offerTimeoutSeconds: parseInt(process.env.OFFER_TIMEOUT_SECONDS, 10) || 60,
   offerSweepIntervalSeconds: parseInt(process.env.OFFER_SWEEP_INTERVAL_SECONDS, 10) || 15,
+  // Failed provider refunds (e.g. e-wallet charge not yet confirmed — T+2
+  // for TNG) are retried on this interval until they clear.
+  refundRetryIntervalMinutes: parseFloat(process.env.REFUND_RETRY_INTERVAL_MINUTES) || 60,
   platformServiceFee: parseFloat(process.env.PLATFORM_SERVICE_FEE) || 15,
   adminApiToken: process.env.ADMIN_API_TOKEN || null,
   allowUnverifiedSocialAuth: process.env.ALLOW_UNVERIFIED_SOCIAL_AUTH === "true",

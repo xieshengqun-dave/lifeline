@@ -252,9 +252,19 @@ bug came out of it:
   but **charge confirmation is T+2 (MY)**, so a refund attempted before the
   charge confirms fails. Consequence: instant auto-refunds (cancel right after
   paying, no-operators expiry) will 422 inside the confirmation window and land
-  in the loud `REFUND REQUIRED … process manually` log. Options for later: a
-  pending-refund retry sweep (retry failed refunds daily until the charge
-  confirms) — flagged, not built; needs a decision.
+  in the loud `REFUND REQUIRED … process manually` log. Flagged first, then the
+  user approved building the retry sweep — see below.
+- **Refund retry sweep built** (user: "yes build the retry sweep"):
+  `sweepPendingRefunds()` + `startRefundRetrySweep()` in offerEngine.js — any
+  cancelled/expired booking still `paid`-but-not-refunded is retried through the
+  normal `refundPrepaidBooking()` path every `REFUND_RETRY_INTERVAL_MINUTES`
+  (default 60) for up to 30 days after payment, with a first pass 15s after boot.
+  Fiuu bookings are excluded (no refund API — retries would only log noise). The
+  patient-visible "Refund Being Processed" tracking event is now added once, not
+  per retry; on eventual success the patient gets the normal refund push + event.
+  Verified via mock-gateway sim (refund 422s twice à la T+2, third attempt
+  clears): booking flips to refunded, exactly 3 provider calls, 1 processing
+  event, 1 refunded event, no further calls after success. Suite green.
 - Local dev note: HitPay rejects `localhost` webhook URLs (422 on payment-request
   creation), so paid-flow testing must run against Railway (or a tunnel). Also:
   HitPay's sandbox checkout requires the merchant to finish onboarding + enable

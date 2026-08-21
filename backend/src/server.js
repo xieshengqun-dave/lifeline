@@ -10,6 +10,7 @@ import {
   recoverScheduledDispatches,
   recoverPaymentOrders,
   startOfferSweep,
+  startRefundRetrySweep,
 } from "./services/offerEngine.js";
 
 const httpServer = http.createServer(app);
@@ -19,5 +20,6 @@ await recoverPendingOffers();
 await recoverScheduledDispatches();
 await recoverPaymentOrders();
 startOfferSweep();
+startRefundRetrySweep();
 
 httpServer.listen(config.port, () => console.log(`Lifeline API on :${config.port}`));

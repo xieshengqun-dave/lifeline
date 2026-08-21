@@ -207,8 +207,58 @@ async function refundPrepaidBooking(booking, reason) {
     console.error(
       `REFUND REQUIRED for booking ${booking.id} (${result.reason}) — process manually via the ${booking.paymentProvider || "payment"} provider's dashboard/portal`
     );
-    await addTrackingEvent(booking.id, "Refund Being Processed — Contact Support If Not Received");
+    // The retry sweep re-runs this path (e.g. hourly until a T+2 e-wallet
+    // charge confirms) — the patient-visible event is only added once.
+    const label = "Refund Being Processed — Contact Support If Not Received";
+    const already = await prisma.trackingEvent.findFirst({ where: { bookingId: booking.id, label } });
+    if (!already) await addTrackingEvent(booking.id, label);
   }
+}
+
+// Refund retry sweep (2026-08-21): e-wallet charges (TNG via HitPay) only
+// become refundable after the gateway confirms them — T+2 in Malaysia — so
+// an instant cancel/no-operator refund fails inside that window. Any
+// cancelled/expired booking still paid-but-not-refunded is retried here
+// until the provider accepts, capped at REFUND_RETRY_MAX_AGE_DAYS after
+// payment (after that only the original REFUND REQUIRED logs remain and the
+// refund is a manual dashboard step). Fiuu bookings are excluded — that
+// provider has no refund API wired and every retry would just log noise.
+const REFUND_RETRY_MAX_AGE_DAYS = 30;
+
+export async function sweepPendingRefunds() {
+  const cutoff = new Date(Date.now() - REFUND_RETRY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const stuck = await prisma.booking.findMany({
+    where: {
+      status: { in: [BOOKING_STATUS.CANCELLED, BOOKING_STATUS.EXPIRED] },
+      paymentStatus: PAYMENT_STATUS.PAID,
+      refundedAt: null,
+      paidAt: { not: null, gte: cutoff },
+    },
+  });
+  let refunded = 0;
+  for (const booking of stuck) {
+    if (booking.paymentProvider === "fiuu" || booking.paymentRef?.startsWith("fiuu:")) continue;
+    try {
+      await refundPrepaidBooking(booking, booking.status === BOOKING_STATUS.EXPIRED ? "no_operators" : "cancelled");
+      const fresh = await prisma.booking.findUnique({ where: { id: booking.id }, select: { refundedAt: true } });
+      if (fresh?.refundedAt) refunded++;
+    } catch (err) {
+      console.error(`refund retry(${booking.id}) failed:`, err);
+    }
+  }
+  if (refunded) console.log(`Refund retry sweep: ${refunded} pending refund(s) went through`);
+  return refunded;
+}
+
+export function startRefundRetrySweep() {
+  // First pass shortly after boot (catch the backlog from before a deploy),
+  // then hourly by default — matched to confirmation windows measured in
+  // days, not seconds.
+  setTimeout(() => sweepPendingRefunds().catch((err) => console.error("refund retry sweep failed:", err)), 15_000);
+  return setInterval(
+    () => sweepPendingRefunds().catch((err) => console.error("refund retry sweep failed:", err)),
+    config.refundRetryIntervalMinutes * 60 * 1000
+  );
 }
 
 // On decline/timeout/skip: mark the transient "declined" pulse, then offer
