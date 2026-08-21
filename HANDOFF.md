@@ -229,6 +229,38 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-08-21 — HitPay VERIFIED LIVE: sandbox TNG payment → webhook → dispatch on Railway
+- User created a sandbox merchant (`@optimus-tech` at sandbox.hit-pay.com), put
+  `HITPAY_API_KEY`/`HITPAY_SALT`/`PAYMENT_PROVIDER=hitpay` in backend/.env; the vars
+  were copied to Railway via the CLI (values never in chat) and the service
+  redeployed — production `/api/payments/status` now reports `provider: hitpay`.
+- **Full E2E proven against production**: guest booking near Klang (RM211.48) →
+  `pending_payment` → real HitPay checkout (Sandbox Mode, TNG + DuitNow QR shown)
+  → paid via the TNG mock → **HitPay's webhook hit Railway, HMAC verified, booking
+  settled** (`paymentStatus=paid`, `provider=hitpay`, `paymentRef=hitpay:<uuid>`)
+  → "Payment Received" → "Offer Sent to Klang Response Ambulance" with a live
+  countdown. The pay-first flow works with real gateway plumbing.
+- Also proven live along the way: the pending_payment sweep auto-cancelled an
+  abandoned unpaid booking at exactly 15 min ("Payment Not Completed — Booking
+  Cancelled"), and prod DB was reseeded with the 6 Klang operators (idempotent
+  seed via the Postgres public URL; `railway run` injects the internal-only host,
+  so export `DATABASE_PUBLIC_URL` from the Postgres service instead).
+- **⚠ Refund caveat (human follow-up)**: cancelling the PAID booking hit the real
+  refund API and HitPay 422'd — *"refunds are not supported for the payment
+  method"*: **TNG eWallet charges can't be refunded via API** (cards can). The
+  engine did the right thing: booking cancelled cleanly + loud `REFUND REQUIRED …
+  process manually` log. Action: ask HitPay support whether e-wallet refunds are
+  possible in production accounts; until then e-wallet refunds = manual dashboard
+  step, which affects the no-operator/cancel auto-refund promise for TNG payers.
+- Local dev note: HitPay rejects `localhost` webhook URLs (422 on payment-request
+  creation), so paid-flow testing must run against Railway (or a tunnel). Also:
+  HitPay's sandbox checkout requires the merchant to finish onboarding + enable
+  payment methods (Settings → Payment Methods), or it shows "Not ready to accept
+  payment". Currently only TNG is enabled — user may want to also toggle DuitNow
+  QR / FPX / cards there.
+- **Next**: real two-phone demo now includes a real TNG payment: patient app →
+  pay with TNG on the hosted page → operator app receives the offer push.
+
 ### 2026-08-12 — HitPay wired as the primary Malaysian gateway + review cleanup done
 - **HitPay** (user: "can you wire hitpay instead?") is now the third provider behind
   the payment boundary: `PAYMENT_PROVIDER=hitpay` + `HITPAY_API_KEY`/`HITPAY_SALT`
