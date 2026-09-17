@@ -156,7 +156,7 @@ bug came out of it:
 - **"No units available" from the user's home diagnosed as correct behavior**: all 5
   seeded operators were PJ/KL-centred (traced the phone's real quote via a temp debug
   log — pickup at Bandar Parklands, south Klang). Seeded a 6th operator
-  **Klang Response Ambulance** (`ops@klangresponse.example` / `operator123`, base at
+  **Klang Response Ambulance** (`klang@lifeline.test` / `operator123`, base at
   Klang town, 10km radius, 2 ambulances, 2 crew) — verified the user's exact pickup
   then matches (8.5km). Also learned: offers only "exist" if an operator app is open to
   accept — every earlier attempt timed out through the cascade because nobody was
@@ -228,6 +228,19 @@ bug came out of it:
   (schedule ~20 min out → dispatches immediately → operator sees scheduled time).
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
+
+### 2026-09-17 — Operator APK rebuilt; shorter demo operator logins
+- **Operator APK rebuilt** (EAS build fc782a16) so the top-up screen no longer says
+  payments open "on a secure Stripe page (test mode)" — production is on HitPay.
+  The patient APK (b47f96c) was already current: none of its user-facing text changed.
+- **Demo operator emails shortened** so they're quick to type on a phone:
+  `klang@`, `shahalam@`, `pj@`, `subang@`, `kl@`, `cheras@` + `lifeline.test`
+  (password still `operator123`). `seed.js` renames rows still on the old
+  `ops@….example` addresses in place (same id, trips, wallet — no duplicates);
+  already run against both the dev and **production** DBs.
+- Operator login now trims and lowercases the email before lookup.
+- **⚠ Before real operators onboard**: these demo accounts (shared password
+  `operator123`) exist in the production DB — delete them or change their passwords.
 
 ### 2026-08-21 — HitPay VERIFIED LIVE: sandbox TNG payment → webhook → dispatch on Railway
 - User created a sandbox merchant (`@optimus-tech` at sandbox.hit-pay.com), put

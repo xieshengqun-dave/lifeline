@@ -27,7 +27,9 @@ const upgradeSchema = z.object({
 });
 
 const operatorLoginSchema = z.object({
-  email: z.string().email(),
+  // Normalised so a trailing space or capital from a phone keyboard still
+  // logs in (seeded/stored operator emails are lowercase).
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
 });
 

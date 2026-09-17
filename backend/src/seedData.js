@@ -8,10 +8,22 @@
 
 export const DEFAULT_OPERATOR_PASSWORD = "operator123";
 
+// Demo emails were shortened 2026-09-17 so they're quick to type on a phone.
+// seed.js renames rows still on a legacy address in place (same id, trips,
+// and wallet) instead of creating duplicate operators.
+export const LEGACY_OPERATOR_EMAILS = {
+  "pj@lifeline.test": "ops@pjrapid.example",
+  "subang@lifeline.test": "ops@subangmedevac.example",
+  "shahalam@lifeline.test": "ops@shahalames.example",
+  "kl@lifeline.test": "ops@klcityambulance.example",
+  "cheras@lifeline.test": "ops@cherascare.example",
+  "klang@lifeline.test": "ops@klangresponse.example",
+};
+
 export const operators = [
   {
     name: "PJ Rapid Response",
-    email: "ops@pjrapid.example",
+    email: "pj@lifeline.test",
     phone: "+60312345001",
     baseLat: 3.1073,
     baseLng: 101.6067,
@@ -33,7 +45,7 @@ export const operators = [
   },
   {
     name: "Subang MedEvac",
-    email: "ops@subangmedevac.example",
+    email: "subang@lifeline.test",
     phone: "+60312345002",
     baseLat: 3.0567,
     baseLng: 101.5851,
@@ -55,7 +67,7 @@ export const operators = [
   },
   {
     name: "Shah Alam Emergency Services",
-    email: "ops@shahalames.example",
+    email: "shahalam@lifeline.test",
     phone: "+60312345003",
     baseLat: 3.0738,
     baseLng: 101.5183,
@@ -77,7 +89,7 @@ export const operators = [
   },
   {
     name: "KL City Ambulance",
-    email: "ops@klcityambulance.example",
+    email: "kl@lifeline.test",
     phone: "+60312345004",
     baseLat: 3.1516,
     baseLng: 101.7093,
@@ -98,7 +110,7 @@ export const operators = [
   },
   {
     name: "Cheras Care Ambulance",
-    email: "ops@cherascare.example",
+    email: "cheras@lifeline.test",
     phone: "+60312345005",
     baseLat: 3.0730,
     baseLng: 101.7420,
@@ -119,7 +131,7 @@ export const operators = [
   },
   {
     name: "Klang Response Ambulance",
-    email: "ops@klangresponse.example",
+    email: "klang@lifeline.test",
     phone: "+60312345006",
     address: "Jalan Meru, Klang",
     baseLat: 3.0448,
