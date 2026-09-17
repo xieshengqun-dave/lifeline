@@ -380,12 +380,11 @@ export default function OperatorsPage() {
               </span>
             </div>
             {walletError && <div className="error-box" style={{ marginTop: 8 }}>{walletError}</div>}
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <div className="wallet-form">
               <select
                 value={walletForm.type}
                 onChange={(e) => setWalletForm((f) => ({ ...f, type: e.target.value }))}
                 disabled={walletBusy}
-                style={{ flex: "0 0 110px" }}
               >
                 <option value="topup">Top-up</option>
                 <option value="withdrawal">Withdrawal</option>
@@ -397,20 +396,19 @@ export default function OperatorsPage() {
                 value={walletForm.amount}
                 onChange={(e) => setWalletForm((f) => ({ ...f, amount: e.target.value }))}
                 disabled={walletBusy}
-                style={{ flex: "0 0 90px" }}
               />
               <input
+                className="wallet-form-wide"
                 type="text"
                 placeholder="Note / transfer ref"
                 value={walletForm.note}
                 onChange={(e) => setWalletForm((f) => ({ ...f, note: e.target.value }))}
                 disabled={walletBusy}
-                style={{ flex: 1 }}
               />
             </div>
             <button
               className="btn btn-primary drawer-btn"
-              style={{ marginTop: 8, width: "100%" }}
+              style={{ width: "100%" }}
               disabled={walletBusy}
               onClick={() => submitWalletTx(selected.id)}
             >
@@ -418,8 +416,10 @@ export default function OperatorsPage() {
             </button>
             {walletTx.slice(0, 6).map((t) => (
               <div key={t.id} className="drawer-detail-row" style={{ fontSize: 12 }}>
-                <span>{t.type.replace("_", " ")}{t.note ? ` · ${t.note.slice(0, 26)}` : ""}</span>
-                <span style={{ color: t.amount >= 0 ? "#1e8e5a" : "#c0392b" }}>
+                <span className="drawer-detail-note" title={t.note || ""}>
+                  {t.type.replace("_", " ")}{t.note ? ` · ${t.note}` : ""}
+                </span>
+                <span className="drawer-detail-amount" style={{ color: t.amount >= 0 ? "#1e8e5a" : "#c0392b" }}>
                   {t.amount >= 0 ? "+" : "−"}{formatMoney(Math.abs(t.amount))}
                 </span>
               </div>

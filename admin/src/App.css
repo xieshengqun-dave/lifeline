@@ -591,6 +591,38 @@ tr:last-child td {
   padding: 4px 14px;
 }
 
+/* Wallet adjustment form. Laid out as a grid rather than one flex row: a
+   text input's default intrinsic width (~180px) refuses to shrink inside a
+   flex row, which pushed the note field outside the drawer. */
+.wallet-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.wallet-form > * {
+  min-width: 0;
+  width: 100%;
+}
+
+.wallet-form .wallet-form-wide {
+  grid-column: 1 / -1;
+}
+
+/* Ledger lines: keep a long transfer note on one line instead of stretching
+   the row (and the drawer) to fit it. */
+.drawer-detail-row .drawer-detail-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 10px;
+}
+
+.drawer-detail-row .drawer-detail-amount {
+  flex-shrink: 0;
+}
+
 .drawer-actions {
   display: flex;
   gap: 10px;
