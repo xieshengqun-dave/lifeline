@@ -48,6 +48,13 @@ async function req(path, options = {}) {
   return body;
 }
 
+export const adminLogin = (email, password) =>
+  req("/api/auth/admin/login", { method: "POST", body: JSON.stringify({ email, password }) });
+export const getAdminUsers = () => req("/api/admin/users");
+export const createAdminUser = (data) => req("/api/admin/users", { method: "POST", body: JSON.stringify(data) });
+export const updateAdminUser = (id, data) =>
+  req(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
 export const getOperators = () => req("/api/admin/operators");
 export const createOperator = (data) => req("/api/admin/operators", { method: "POST", body: JSON.stringify(data) });
 export const updateOperator = (id, data) => req(`/api/admin/operators/${id}`, { method: "PUT", body: JSON.stringify(data) });

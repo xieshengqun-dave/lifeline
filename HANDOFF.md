@@ -229,6 +229,31 @@ bug came out of it:
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
 
+### 2026-09-18 — Admin accounts (email + password) + drawer overflow fix
+- **Admin users** replace the shared `ADMIN_API_TOKEN` as the day-to-day dashboard
+  login (user: the token is "a bit too complicated"). New `AdminUser` table
+  (email, name, bcrypt hash, disabledAt, lastLoginAt), `POST /api/auth/admin/login`
+  → JWT, and `GET/POST/PATCH /api/admin/users`. Decided with the founder: **every
+  admin has the same powers** (split into roles when the team grows), and the
+  **shared token stays as break-glass access**.
+  - `requireAdmin` now accepts an admin JWT *or* the token, and re-checks the DB
+    each request, so disabling an account kills its existing session immediately.
+  - Login hardening: same 401 for unknown email / wrong password / disabled
+    account (never reveals which admins exist); 5 failed attempts lock that email
+    for 15 min (in-memory — one API instance today); passwords min 10 chars.
+  - Guard rails: you cannot disable your own account, and the last enabled admin
+    cannot be disabled — the console can't lock everyone out.
+  - Dashboard: login is Email + Password with a "Use admin token instead" link
+    (break-glass, and the only way in before the first account exists); new
+    **Admin Users** page adds/disables people and resets passwords.
+  - 10 new backend tests (test/admin-users.test.js) cover bootstrap-with-token,
+    login, disabled-user lockout of an existing JWT, reset, and rate limiting.
+  - **First account**: sign in at lifeline-adm.netlify.app with the token, open
+    Admin Users, add yourself, then use email + password from then on.
+- **Operator drawer fix**: the wallet note input's intrinsic width stopped the
+  flex row from shrinking, pushing it past the 400px drawer and off-screen.
+  Now a grid (type + amount, then note); long ledger notes ellipsise.
+
 ### 2026-09-17 — Operator APK rebuilt; shorter demo operator logins
 - **Operator APK rebuilt** (EAS build fc782a16) so the top-up screen no longer says
   payments open "on a secure Stripe page (test mode)" — production is on HitPay.

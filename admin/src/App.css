@@ -826,3 +826,48 @@ tr.row-accent-amber {
   font-size: 12.5px;
   margin-top: 10px;
 }
+
+/* Admin users page */
+.users-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 18px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.users-add-form > * {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .users-add-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.users-you-tag {
+  margin-left: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--color-teal-deep);
+  background: var(--color-teal-soft);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+/* Secondary action under the sign-in button (token / email toggle) */
+.login-alt-btn {
+  width: 100%;
+  margin-top: 10px;
+  background: transparent;
+  border: none;
+  color: var(--color-faint);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: underline;
+}

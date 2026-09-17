@@ -1,18 +1,17 @@
 import React from "react";
-import { setAuthToken, getOperators, ApiError } from "../api/client";
+import { setAuthToken, adminLogin, getOperators, ApiError } from "../api/client";
 import lifelineMark from "../assets/brand/lifeline-mark.png";
 
-// There's no dedicated "verify token" endpoint on the backend (and shouldn't
-// be, per Phase 4's zero-new-endpoints scope) — validate by making one real
-// admin call and only flip to logged-in on success, so a bad token never
-// lands the user on a blank/broken OperatorsPage.
-//
-// The design mock shows separate Email + Password fields, but the real
-// mechanism here is a single shared admin token (no admin user table) —
-// splitting one token into two fake inputs would misrepresent what's
-// actually being checked, so this stays a single labeled field restyled to
-// match the card/shadow/gradient treatment, not a literal copy of the mock.
+// Two ways in (2026-09-18):
+//  • Email + password — a real AdminUser account, the normal path.
+//  • The shared ADMIN_API_TOKEN — break-glass access, and the only way in
+//    before the first account exists (sign in with it, then add yourself on
+//    the Users page). Validated by making one real admin call, since there's
+//    no token-verify endpoint: a bad token must never land on a broken page.
 export default function LoginPage({ onLogin }) {
+  const [mode, setMode] = React.useState("password");
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [tokenInput, setTokenInput] = React.useState("");
   const [checking, setChecking] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -21,14 +20,19 @@ export default function LoginPage({ onLogin }) {
     e.preventDefault();
     setChecking(true);
     setError(null);
-    setAuthToken(tokenInput.trim());
     try {
-      await getOperators();
-      onLogin(tokenInput.trim());
+      if (mode === "password") {
+        const { token } = await adminLogin(email.trim(), password);
+        onLogin(token);
+      } else {
+        setAuthToken(tokenInput.trim());
+        await getOperators();
+        onLogin(tokenInput.trim());
+      }
     } catch (err) {
       setAuthToken(null);
-      if (err instanceof ApiError && err.status === 401) {
-        setError("Invalid admin token.");
+      if (err instanceof ApiError && (err.status === 401 || err.status === 429)) {
+        setError(err.message);
       } else {
         setError(err.message || "Could not reach the server.");
       }
@@ -36,6 +40,8 @@ export default function LoginPage({ onLogin }) {
       setChecking(false);
     }
   }
+
+  const disabled = checking || (mode === "password" ? !email || !password : !tokenInput);
 
   return (
     <div className="login-wrap">
@@ -63,20 +69,62 @@ export default function LoginPage({ onLogin }) {
 
         {error && <div className="error-box">{error}</div>}
 
-        <label className="login-label">Admin Token</label>
-        <div className="login-field">
-          <input
-            className="login-input"
-            type="password"
-            placeholder="••••••••••••"
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.target.value)}
-            autoFocus
-          />
-        </div>
+        {mode === "password" ? (
+          <>
+            <label className="login-label">Email</label>
+            <div className="login-field">
+              <input
+                className="login-input"
+                type="email"
+                autoComplete="username"
+                placeholder="you@lifeline.test"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoFocus
+              />
+            </div>
 
-        <button className="login-btn" type="submit" disabled={checking || !tokenInput}>
+            <label className="login-label">Password</label>
+            <div className="login-field">
+              <input
+                className="login-input"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="login-label">Admin Token</label>
+            <div className="login-field">
+              <input
+                className="login-input"
+                type="password"
+                placeholder="••••••••••••"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </>
+        )}
+
+        <button className="login-btn" type="submit" disabled={disabled}>
           {checking ? "Checking…" : "Sign in"}
+        </button>
+
+        <button
+          type="button"
+          className="login-alt-btn"
+          onClick={() => {
+            setMode((m) => (m === "password" ? "token" : "password"));
+            setError(null);
+          }}
+        >
+          {mode === "password" ? "Use admin token instead" : "Back to email sign-in"}
         </button>
       </form>
     </div>

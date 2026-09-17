@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import OperatorsPage from "./pages/OperatorsPage";
 import BookingsPage from "./pages/BookingsPage";
 import SettingsPage from "./pages/SettingsPage";
+import UsersPage from "./pages/UsersPage";
 
 export default function App() {
   const [token, setToken] = React.useState(() => getAuthToken());
@@ -35,6 +36,7 @@ export default function App() {
       {view === "operators" && <OperatorsPage />}
       {view === "bookings" && <BookingsPage />}
       {view === "settings" && <SettingsPage />}
+      {view === "users" && <UsersPage />}
       {view === "analytics" && <div className="page state-box">Analytics — coming in a later phase.</div>}
     </Layout>
   );

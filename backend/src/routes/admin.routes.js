@@ -276,4 +276,88 @@ router.post(
   })
 );
 
+// ── Admin users (back-office logins, added 2026-09-18) ──
+// Every admin has the same powers, so any signed-in admin (or a break-glass
+// ADMIN_API_TOKEN request, which is how the first account gets created) may
+// manage the others. Guard rails: a password minimum, no disabling the last
+// remaining admin, and no disabling yourself by accident.
+const MIN_PASSWORD = 10;
+
+const adminUserSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  name: z.string().trim().min(2).max(80),
+  password: z.string().min(MIN_PASSWORD, `Password must be at least ${MIN_PASSWORD} characters`).max(200),
+});
+
+const adminUserPatchSchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  password: z.string().min(MIN_PASSWORD, `Password must be at least ${MIN_PASSWORD} characters`).max(200).optional(),
+  disabled: z.boolean().optional(),
+});
+
+const publicAdmin = (a) => ({
+  id: a.id,
+  email: a.email,
+  name: a.name,
+  disabled: !!a.disabledAt,
+  lastLoginAt: a.lastLoginAt,
+  createdAt: a.createdAt,
+});
+
+router.get(
+  "/users",
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const users = await prisma.adminUser.findMany({ orderBy: { createdAt: "asc" } });
+    res.json({ users: users.map(publicAdmin), currentAdminUserId: req.adminUserId });
+  })
+);
+
+router.post(
+  "/users",
+  requireAdmin,
+  validate(adminUserSchema),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.adminUser.findUnique({ where: { email: req.body.email } });
+    if (existing) throw new HttpError(409, "email_taken", "An admin with that email already exists");
+    const created = await prisma.adminUser.create({
+      data: {
+        email: req.body.email,
+        name: req.body.name,
+        passwordHash: await bcrypt.hash(req.body.password, 10),
+      },
+    });
+    res.status(201).json(publicAdmin(created));
+  })
+);
+
+router.patch(
+  "/users/:id",
+  requireAdmin,
+  validate(adminUserPatchSchema),
+  asyncHandler(async (req, res) => {
+    const target = await prisma.adminUser.findUnique({ where: { id: req.params.id } });
+    if (!target) throw new HttpError(404, "not_found", "Admin user not found");
+
+    const data = {};
+    if (req.body.name !== undefined) data.name = req.body.name;
+    if (req.body.password !== undefined) data.passwordHash = await bcrypt.hash(req.body.password, 10);
+    if (req.body.disabled !== undefined) {
+      if (req.body.disabled) {
+        if (target.id === req.adminUserId) {
+          throw new HttpError(400, "cannot_disable_self", "You cannot disable your own account");
+        }
+        const enabled = await prisma.adminUser.count({ where: { disabledAt: null } });
+        if (enabled <= 1) {
+          throw new HttpError(400, "last_admin", "At least one admin account must stay enabled");
+        }
+      }
+      data.disabledAt = req.body.disabled ? new Date() : null;
+    }
+
+    const updated = await prisma.adminUser.update({ where: { id: target.id }, data });
+    res.json(publicAdmin(updated));
+  })
+);
+
 export default router;

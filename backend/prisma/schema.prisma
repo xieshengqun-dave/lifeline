@@ -36,6 +36,21 @@ model User {
   @@unique([authProvider, providerId])
 }
 
+// ── Admin users (Lifeline back-office logins) ──
+// Added 2026-09-18, replacing the single shared ADMIN_API_TOKEN as the
+// day-to-day login. The token still works as break-glass access and is what
+// creates the first account. Every admin has the same powers (decided with
+// the founder); split into roles when the team grows.
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  disabledAt   DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+}
+
 // ── Operators (ambulance companies) ──
 model Operator {
   id              String   @id @default(cuid())

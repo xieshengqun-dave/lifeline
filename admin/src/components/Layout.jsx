@@ -4,6 +4,7 @@ const NAV_ITEMS = [
   { key: "operators", label: "Operators" },
   { key: "bookings", label: "Bookings" },
   { key: "settings", label: "Settings" },
+  { key: "users", label: "Admin Users" },
   { key: "analytics", label: "Analytics" }, // placeholder — not designed yet, matches the design's own framing
 ];
 
