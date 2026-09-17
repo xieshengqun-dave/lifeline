@@ -28,7 +28,8 @@
       },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#14233f"
+        "backgroundColor": "#0d535e",
+        "backgroundImage": "./assets/adaptive-icon-background.png"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -53,8 +54,9 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
+          "imageWidth": 170,
           "resizeMode": "contain",
-          "backgroundColor": "#14233f"
+          "backgroundColor": "#ffffff"
         }
       ],
       "expo-font"

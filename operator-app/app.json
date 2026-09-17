@@ -19,7 +19,8 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#14233f"
+        "backgroundColor": "#004d60",
+        "backgroundImage": "./assets/adaptive-icon-background.png"
       }
     },
     "web": {
@@ -30,8 +31,9 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
+          "imageWidth": 170,
           "resizeMode": "contain",
-          "backgroundColor": "#14233f"
+          "backgroundColor": "#ffffff"
         }
       ],
       "expo-font"

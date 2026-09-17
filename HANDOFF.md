@@ -241,6 +241,15 @@ bug came out of it:
 - Operator login now trims and lowercases the email before lookup.
 - **⚠ Before real operators onboard**: these demo accounts (shared password
   `operator123`) exist in the production DB — delete them or change their passwords.
+- **New app icons + logos** (user-supplied, made from the logo brief doc): masters
+  in `assets/brand/source/`; `python3 scripts/make-brand-assets.py` regenerates
+  every size (both apps' icon/adaptive/favicon/splash/brand marks, PWA
+  180/192/512, admin marks). Operator master came with baked-in black rounded
+  corners → cropped off; its Android adaptive icon is a cut-out of pin + badge on
+  a rebuilt gradient (a feathered square left a visible frame), scaled 0.62 so
+  the badge stays inside the circle mask. Splash is now the full logo on white
+  (`imageWidth` 170 keeps it inside Android 12+'s circular splash area). No iOS
+  dark/tinted icon variants yet — ask for them when the iOS build happens.
 
 ### 2026-08-21 — HitPay VERIFIED LIVE: sandbox TNG payment → webhook → dispatch on Railway
 - User created a sandbox merchant (`@optimus-tech` at sandbox.hit-pay.com), put
