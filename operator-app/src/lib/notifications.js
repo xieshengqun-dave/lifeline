@@ -24,6 +24,7 @@ Notifications.setNotificationHandler({
 
 export async function registerForPushAsync() {
   try {
+    if (Platform.OS === "web") return null; // no Expo push on web builds
     if (!Device.isDevice) return null; // simulators can't receive push
 
     if (Platform.OS === "android") {

@@ -3,7 +3,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "./src/lib/storage";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold } from "@expo-google-fonts/poppins";
 import {
@@ -72,8 +72,8 @@ export default function App() {
     setAuthToken(null);
     setPendingOffers([]);
     disconnectSocket();
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_KEY);
+    await storage.deleteItem(TOKEN_KEY);
+    await storage.deleteItem(USER_KEY);
     // initialRouteName only applies at first mount — without an explicit
     // reset the user stays on Home looking signed-in (the "sign out does
     // nothing" bug).
@@ -87,8 +87,8 @@ export default function App() {
     setAuthToken(res.token);
     setToken(res.token);
     setOperator(res.operator);
-    await SecureStore.setItemAsync(TOKEN_KEY, res.token);
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(res.operator));
+    await storage.setItem(TOKEN_KEY, res.token);
+    await storage.setItem(USER_KEY, JSON.stringify(res.operator));
   }, []);
 
   React.useEffect(() => {
@@ -102,11 +102,11 @@ export default function App() {
 
   React.useEffect(() => {
     (async () => {
-      const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+      const storedToken = await storage.getItem(TOKEN_KEY);
       if (storedToken) {
         setAuthToken(storedToken);
         setToken(storedToken);
-        const storedUser = await SecureStore.getItemAsync(USER_KEY);
+        const storedUser = await storage.getItem(USER_KEY);
         if (storedUser) setOperator(JSON.parse(storedUser));
       }
       setAuthLoading(false);

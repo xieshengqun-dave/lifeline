@@ -531,12 +531,39 @@ data from the production database) — no mockups, no debug overlays.
 placeholder text *"Live map — coming with operator live GPS"*. Either crop that panel out or
 caption the image around the timeline and crew details. **Never present it as map tracking.**
 
-**Operator and admin screenshots were not captured.** The operator app is Android-only and
-needs a physical device or emulator, which is not available in this environment. To produce
-them, install the operator APK, sign in with a demo account, and capture: Home, Incoming
-Requests (during a live offer), Active Trip, Wallet, Trip History. Design mockups exist at
-`design_handoff_lifeline_operator/screenshots/` — these are **design references, not the built
-app**, and should not be presented as product screenshots.
+**Operator screenshots — captured.** Taken from a local web build of the operator app
+running against the production API, signed in as the seeded Klang demo operator, with a real
+booking driven through the flow (cancelled afterwards).
+
+| File | Screen |
+|---|---|
+| `11-operator-login.png` | Operator sign-in |
+| `12-operator-home.png` | Home — online toggle, wallet, today's trips, fleet |
+| `13-operator-incoming-request.png` | **Incoming job offer with live countdown** — the operator-side money shot |
+| `14-operator-assign-crew.png` | Job accepted; ambulance and crew assigned, ready to go |
+| `15-operator-active-trip.png` | Trip in progress (en route) with the status stepper |
+| `16-operator-wallet.png` | Wallet — balance, commission rate, minimum balance |
+| `17-operator-trip-history.png` | Trip history with earnings totals |
+
+**Device captures (alternative set).** Three genuine Android phone screenshots supplied by the
+founder — same screens, real device chrome (status bar, gesture bar), lower resolution
+(540×1158 vs 780×1688):
+
+| File | Screen |
+|---|---|
+| `device-operator-home.jpeg` | Home (Subang MedEvac account) |
+| `device-operator-trips.jpeg` | Trips |
+| `device-operator-wallet.jpeg` | Wallet |
+
+Use whichever suits the layout: the PNG set is higher resolution and cleaner for print; the
+device JPEGs look unmistakably like a real phone. Do not mix both styles on one spread.
+
+**Admin dashboard screenshots were not captured** — signing in needs the live admin
+credentials. To add them, sign in at `lifeline-adm.netlify.app` and capture the Operators page
+(with an operator selected) and the Settings page.
+
+Design mockups also exist at `design_handoff_lifeline_operator/screenshots/` — these are
+**design references, not the built app**, and should not be presented as product screenshots.
 
 ---
 
