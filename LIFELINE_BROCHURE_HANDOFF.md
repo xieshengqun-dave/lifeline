@@ -523,11 +523,11 @@ data from the production database) — no mockups, no debug overlays.
 | `05-patient-assessment.png` | Patient assessment form |
 | `06-patient-operator-map.png` | **Compare ambulances** — map price pins + operator cards |
 | `07-patient-review-payment.png` | Confirm & Pay — fare breakdown and payment methods |
-| `09-patient-waiting-for-operator.png` | Requesting your unit, with countdown |
-| `10-patient-operator-accepted.png` | The moment an operator accepts |
-| `11-patient-live-tracking.png` | Live tracking — status, crew, plate, timeline |
+| `08-patient-waiting-for-operator.png` | Requesting your unit, with countdown |
+| `09-patient-operator-accepted.png` | The moment an operator accepts |
+| `10-patient-live-tracking.png` | Live tracking — status, crew, plate, timeline |
 
-**⚠ Caption warning for `11-patient-live-tracking.png`:** this screenshot visibly contains the
+**⚠ Caption warning for `10-patient-live-tracking.png`:** this screenshot visibly contains the
 placeholder text *"Live map — coming with operator live GPS"*. Either crop that panel out or
 caption the image around the timeline and crew details. **Never present it as map tracking.**
 
@@ -673,8 +673,8 @@ For a reader who has never seen Lifeline, in this order:
 6. **Payment made local.** Touch 'n Go, DuitNow QR, online banking, card, or cash in an
    emergency.
 7. **For ambulance operators** (a spread of its own, if the brochure serves both audiences).
-   Jobs on your phone, one-tap accept, automatic commission, trip history. Screenshots 09–11
-   from the operator app once captured.
+   Jobs on your phone, one-tap accept, automatic commission, trip history. Operator screenshots (11+)
+   once captured.
 8. **Built for the Klang Valley.** Local market, local payments, local hospitals.
 9. **Close with the tagline and a call to action** — for patients, where to get the app; for
    operators, how to join (note: joining is currently a manual conversation, not a form).
