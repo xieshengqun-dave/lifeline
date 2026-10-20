@@ -113,6 +113,9 @@ unverified mode works).
 
 - Operator location = **fixed base** (not live GPS) for v1.
 - Pricing = **operator-set fixed rates** (not platform formula).
+- Payment = **patients pay operators directly** (cash / operator's DuitNow);
+  Lifeline bills operators its platform fee **monthly**, with an admin-set
+  credit limit — decided 2026-10-20 after the Malaysian gateway rejection.
 - Accept window = **60 seconds** default, then move to next nearest.
 - Patient can **cancel** or **skip to next** during the wait (Grab-style).
 - Auth = **guest + Google + Apple**.
@@ -228,6 +231,59 @@ bug came out of it:
   (schedule ~20 min out → dispatches immediately → operator sees scheduled time).
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
+
+### 2026-10-20 — Monthly operator billing: patients pay operators directly
+Context: the user's live Malaysian gateway application was **rejected** (HitPay
+sandbox integration from 2026-08-21 still works; only the live merchant account
+is missing). Discussed options; user chose: patients pay the operator directly,
+Lifeline charges operators its platform fee, **billed monthly after the month
+with a credit limit**, operators pay by bank transfer/DuitNow, admin records it.
+
+- **Backend**: `PlatformSettings` gained `creditLimit` (default 0 = the old
+  prepaid no-debt rule, so nothing changes until an admin sets it) and company
+  pay-to fields (`billingAccountName/BankName/AccountNumber/Instructions/QrImage`;
+  QR is a PNG/JPEG data URL, route-specific 1mb body limit). Migration
+  `20261020090000_monthly_billing_credit_limit` was **hand-generated with
+  `prisma migrate diff`** (local dev DB credentials no longer match — the
+  Postgres on :5432 is now a `~/.local/opt/pgsql-18` instance without the
+  `lifeline` role; Homebrew PG16 is gone). Railway applies it on deploy
+  (`prestart` runs `migrate deploy`).
+  - Gates now use **available credit = balance + creditLimit**: per-job fee gate
+    (quote + offer engine) and the go-online minimum. Error copy mentions the
+    credit limit when one is set.
+  - `services/billing.js`: ledger-derived monthly statements in MYT (opening
+    balance worked backwards from the current balance, so seeded floats without
+    ledger rows are right). Endpoints: `GET /api/admin/billing?month=`,
+    `GET /api/admin/operators/:id/statement?month=`, `GET/PUT
+    /api/admin/settings/credit-limit`, `GET/PUT /api/admin/settings/pay-to`,
+    `GET /api/operator/statement`, `GET /api/operator/pay-to`; operator
+    `/wallet` adds `creditLimit`, `availableCredit`, `amountOwed`.
+  - New `test/billing.test.js` (7 checks). Full suite green (8 suites), run
+    against a throwaway PG18 in the session scratchpad.
+- **Admin**: new **Billing** page (month picker, KPIs, per-operator fees /
+  payments / amount due / owed now, printable statement → Print / Save as PDF).
+  Settings: credit-limit card + "Where operators pay" card with QR upload.
+  Operator drawer: "Payment received / top-up" label, "Owes Lifeline" when
+  negative. `npm run build` ok; **not checked in a browser**.
+- **Operator app**: new **How to pay** screen (amount owed, this month's fees,
+  credit left, company bank details + QR; "Pay online instead" only if a
+  gateway is enabled). Wallet/Home show "Owed to Lifeline" + "Pay bill". Bundle
+  ok; **not checked on a phone; APK not rebuilt**.
+- **Patient app**: cash option relabelled "Pay the operator directly — cash or
+  DuitNow" with a "nothing is charged through the app" note; receipt copy
+  updated. Bundle ok.
+- **Website** (`lifeline-website/`, its own git repo): FAQ "Are online payments
+  available?" replaced with "Who do I pay for the trip?" (operator directly) and
+  "How does Lifeline charge ambulance operators?" (monthly platform fee).
+  `Lifeline_Website.zip` in the repo root is now **stale**.
+- **⚠ Human decisions / to-dos**: (1) set the credit limit + company bank/QR in
+  admin Settings on production; (2) turn HitPay off on Railway (unset
+  `PAYMENT_PROVIDER`/HitPay vars) so the patient app offers only
+  pay-the-operator — not done, needs the user's go-ahead; (3) check LHDN
+  MyInvois e-invoicing with an accountant — statements are not e-invoices;
+  (4) rebuild the operator + patient APKs.
+- **Next**: deploy, set the production settings, then a phone walkthrough of a
+  trip → fee shows as owed → admin records payment → owed clears.
 
 ### 2026-09-18 — Admin accounts (email + password) + drawer overflow fix
 - **Admin users** replace the shared `ADMIN_API_TOKEN` as the day-to-day dashboard

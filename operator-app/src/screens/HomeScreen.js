@@ -37,13 +37,13 @@ export default function HomeScreen({ navigation }) {
           const [me, list, fleetRes, walletRes] = await Promise.all([
             getOperatorMe(), getOperatorBookings(), getOperatorFleet(),
             // Wallet failing must not blank the whole Home screen.
-            getOperatorWallet().catch(() => ({ balance: null })),
+            getOperatorWallet().catch(() => null),
           ]);
           if (cancelled) return;
           setOnline(me.online);
           setBookings(list);
           setFleet(fleetRes);
-          setWallet(walletRes.balance);
+          setWallet(walletRes);
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -62,10 +62,10 @@ export default function HomeScreen({ navigation }) {
       setOnline(!next); // rollback
       // BO-set minimum float — the server is the authority; explain + route
       // to top-up rather than failing silently.
-      if (e?.code === "min_balance" || /balance/i.test(e?.message || "")) {
-        Alert.alert("Top up to go online", e.message || "Your wallet balance is below the minimum required to go online.", [
+      if (e?.code === "min_balance" || /balance|credit/i.test(e?.message || "")) {
+        Alert.alert("Payment needed to go online", e.message || "Your wallet balance is below the minimum required to go online.", [
           { text: "Not now" },
-          { text: "Top up", onPress: () => navigation.navigate("TopUp") },
+          { text: "How to pay", onPress: () => navigation.navigate("PayBill") },
         ]);
       }
     } finally {
@@ -112,17 +112,19 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate("Wallet")}>
               <View style={h.walletCard}>
                 <View style={{ flex: 1 }}>
-                  <Text style={h.walletL}>WALLET BALANCE</Text>
-                  <Text style={h.walletN}>{wallet != null ? `RM ${wallet.toFixed(2)}` : "—"}</Text>
+                  <Text style={h.walletL}>{wallet?.amountOwed > 0 ? "OWED TO LIFELINE" : "WALLET BALANCE"}</Text>
+                  <Text style={h.walletN}>
+                    {wallet == null ? "—" : `RM ${(wallet.amountOwed > 0 ? wallet.amountOwed : wallet.balance).toFixed(2)}`}
+                  </Text>
                 </View>
                 <View style={h.walletIconTile}>
                   <Ionicons name="card-outline" size={20} color="#7fffdc" />
                 </View>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity style={h.topupBtn} activeOpacity={0.9} onPress={() => navigation.navigate("TopUp")}>
-              <Ionicons name="add" size={16} color={C.tealDeep} />
-              <Text style={h.topupBtnT}>Top up</Text>
+            <TouchableOpacity style={h.topupBtn} activeOpacity={0.9} onPress={() => navigation.navigate("PayBill")}>
+              <Ionicons name="card-outline" size={16} color={C.tealDeep} />
+              <Text style={h.topupBtnT}>{wallet?.amountOwed > 0 ? "Pay bill" : "How to pay"}</Text>
             </TouchableOpacity>
 
             <Text style={h.sect}>TODAY</Text>

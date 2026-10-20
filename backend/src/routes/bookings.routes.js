@@ -16,7 +16,7 @@ import {
 } from "../services/offerEngine.js";
 import { paymentsEnabled, chargeBookingCard, createBookingPaymentSession } from "../services/payment.js";
 import { assignBookingResources } from "../services/assignment.js";
-import { getPlatformFeeSetting } from "../services/settings.js";
+import { getAllSettings } from "../services/settings.js";
 import { submitRating, getCompletedTripCounts } from "../services/rating.js";
 import { canCoverFee } from "../services/wallet.js";
 import { OFFER_STATUS } from "../lib/constants.js";
@@ -106,9 +106,9 @@ router.post(
     const { pickup, destination } = req.body;
     const distanceKm = haversineKm(pickup.lat, pickup.lng, destination.lat, destination.lng);
 
-    const [candidates, feeSetting] = await Promise.all([
+    const [candidates, { feeSetting, creditLimit }] = await Promise.all([
       findEligibleOperators({ pickupLat: pickup.lat, pickupLng: pickup.lng }),
-      getPlatformFeeSetting(),
+      getAllSettings(),
     ]);
     // Same wallet gate the offer engine applies — patients never see an
     // operator who couldn't actually receive the job (see services/wallet.js).
@@ -116,7 +116,7 @@ router.post(
     // the response.
     const offerable = candidates
       .map((c) => ({ ...c, price: computeFare({ operator: c.operator, distanceKm, feeSetting }) }))
-      .filter(({ operator, price }) => canCoverFee(operator, price.serviceFee));
+      .filter(({ operator, price }) => canCoverFee(operator, price.serviceFee, creditLimit));
     const tripCounts = await getCompletedTripCounts(offerable.map((c) => c.operator.id));
     const operators = offerable.map(({ operator, dispatchDistanceKm, price }) => ({
       operatorId: operator.id,

@@ -183,7 +183,7 @@ export default function ReviewScreen({ navigation }) {
           {(cashAllowed || !payments.enabled) && (
             <MethodRow
               icon="cash-outline"
-              label="Cash — pay the crew directly"
+              label="Pay the operator directly — cash or DuitNow"
               selected={method === "cash"}
               onPress={() => update({ payMethod: "cash" })}
             />
@@ -216,6 +216,12 @@ export default function ReviewScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </Card>
+        {method === "cash" && (
+          <Text style={rv.payNote}>
+            Nothing is charged through the app. You pay the ambulance operator directly
+            when the trip ends, by cash or by scanning the operator's DuitNow QR.
+          </Text>
+        )}
         {payments.enabled && method !== "cash" && (
           <Text style={rv.payNote}>
             Payment is taken first — we only contact operators once it's confirmed. Full

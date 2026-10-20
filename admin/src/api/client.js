@@ -72,3 +72,12 @@ export const updateOfferTimeoutSetting = (seconds) =>
 export const getMinBalanceSetting = () => req("/api/admin/settings/min-wallet-balance");
 export const updateMinBalanceSetting = (amount) =>
   req("/api/admin/settings/min-wallet-balance", { method: "PUT", body: JSON.stringify({ amount }) });
+export const getCreditLimitSetting = () => req("/api/admin/settings/credit-limit");
+export const updateCreditLimitSetting = (amount) =>
+  req("/api/admin/settings/credit-limit", { method: "PUT", body: JSON.stringify({ amount }) });
+export const getPayToSetting = () => req("/api/admin/settings/pay-to");
+export const updatePayToSetting = (data) =>
+  req("/api/admin/settings/pay-to", { method: "PUT", body: JSON.stringify(data) });
+export const getBilling = (month) => req(`/api/admin/billing?month=${encodeURIComponent(month)}`);
+export const getOperatorStatement = (id, month) =>
+  req(`/api/admin/operators/${id}/statement?month=${encodeURIComponent(month)}`);

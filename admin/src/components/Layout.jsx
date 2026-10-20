@@ -3,6 +3,7 @@ import lifelineMark from "../assets/brand/lifeline-mark.png";
 const NAV_ITEMS = [
   { key: "operators", label: "Operators" },
   { key: "bookings", label: "Bookings" },
+  { key: "billing", label: "Billing" },
   { key: "settings", label: "Settings" },
   { key: "users", label: "Admin Users" },
   { key: "analytics", label: "Analytics" }, // placeholder — not designed yet, matches the design's own framing
@@ -11,7 +12,7 @@ const NAV_ITEMS = [
 export default function Layout({ view, onNavigate, onLogout, children }) {
   return (
     <div className="app-shell">
-      <div className="sidebar">
+      <div className="sidebar no-print">
         <div className="sidebar-brand">
           <div className="sidebar-brand-tile">
             <img src={lifelineMark} alt="" />

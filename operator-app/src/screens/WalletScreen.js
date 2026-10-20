@@ -9,7 +9,11 @@ import { getOperatorWallet } from "../api/client";
 import Card from "../components/ui/Card";
 import BottomTabBar from "../components/ui/BottomTabBar";
 
-// W2 · Wallet & transactions. Float-account model: trip fares credit in
+// W2 · Wallet & transactions. Since monthly billing (2026-10-20) patients
+// pay operators directly and fees accrue as an amount owed up to the
+// BO-set credit limit; "How to pay" shows the company's bank / DuitNow
+// details. With credit limit 0 it is the original prepaid float. Original
+// note — Float-account model: trip fares credit in
 // full, platform commission deducts as its own auditable row (two lines per
 // prepaid trip), top-ups add funds, and the BO-set minimum balance gates the
 // online toggle. Spec deltas kept honest: no "pending/24h hold" card (no
@@ -17,8 +21,8 @@ import BottomTabBar from "../components/ui/BottomTabBar";
 // not the mock's hardcoded 15%.
 
 const TX_META = {
-  topup: { label: "Top up", icon: "add", tile: "#eaf4f3", color: C.tealDeep, amountColor: C.green },
-  service_fee: { label: "Platform commission", icon: "remove", tile: "#eef2f4", color: C.body, amountColor: C.red },
+  topup: { label: "Payment received", icon: "add", tile: "#eaf4f3", color: C.tealDeep, amountColor: C.green },
+  service_fee: { label: "Platform fee", icon: "remove", tile: "#eef2f4", color: C.body, amountColor: C.red },
   trip_earning: { label: "Trip fare", icon: "arrow-up", tile: "#eaf6ef", color: C.green, amountColor: C.green },
   withdrawal: { label: "Withdrawal", icon: "arrow-down", tile: "#eef2f4", color: C.body, amountColor: C.red },
   adjustment: { label: "Adjustment", icon: "create-outline", tile: "#eef2f4", color: C.body, amountColor: C.body },
@@ -33,7 +37,7 @@ function txDate(iso) {
 export default function WalletScreen({ navigation }) {
   const [state, setState] = React.useState({
     loading: true, refreshing: false, error: null,
-    balance: 0, minBalance: 50, fee: null, transactions: [],
+    balance: 0, minBalance: 50, creditLimit: 0, availableCredit: 0, amountOwed: 0, fee: null, transactions: [],
   });
 
   const load = React.useCallback(async (refreshing = false) => {
@@ -42,7 +46,9 @@ export default function WalletScreen({ navigation }) {
       const w = await getOperatorWallet();
       setState({
         loading: false, refreshing: false, error: null,
-        balance: w.balance, minBalance: w.minBalance ?? 50, fee: w.fee, transactions: w.transactions,
+        balance: w.balance, minBalance: w.minBalance ?? 50, creditLimit: w.creditLimit ?? 0,
+        availableCredit: w.availableCredit ?? w.balance, amountOwed: w.amountOwed ?? 0,
+        fee: w.fee, transactions: w.transactions,
       });
     } catch (e) {
       setState((s) => ({ ...s, loading: false, refreshing: false, error: e.message || "Could not load wallet." }));
@@ -55,6 +61,8 @@ export default function WalletScreen({ navigation }) {
     return unsub;
   }, [load, navigation]);
 
+  const monthly = state.creditLimit > 0;
+  const owes = state.amountOwed > 0;
   const feeLabel = state.fee
     ? state.fee.feeType === "percent" ? `${state.fee.feeValue}%` : `RM ${state.fee.feeValue.toFixed(0)}`
     : "—";
@@ -79,32 +87,49 @@ export default function WalletScreen({ navigation }) {
             contentContainerStyle={{ paddingHorizontal: spacing.screenPad, paddingBottom: 20 }}
             ListHeaderComponent={
               <>
-                <Text style={w.balanceL}>AVAILABLE BALANCE</Text>
-                <Text style={w.balanceN}>RM {state.balance.toFixed(2)}</Text>
-                <TouchableOpacity style={w.topupBtn} activeOpacity={0.9} onPress={() => navigation.navigate("TopUp")}>
-                  <Ionicons name="add" size={17} color={C.tealDeep} />
-                  <Text style={w.topupBtnT}>Top up</Text>
+                <Text style={w.balanceL}>{owes ? "OWED TO LIFELINE" : monthly ? "IN CREDIT" : "AVAILABLE BALANCE"}</Text>
+                <Text style={w.balanceN}>RM {(owes ? state.amountOwed : state.balance).toFixed(2)}</Text>
+                <TouchableOpacity style={w.topupBtn} activeOpacity={0.9} onPress={() => navigation.navigate("PayBill")}>
+                  <Ionicons name="card-outline" size={17} color={C.tealDeep} />
+                  <Text style={w.topupBtnT}>{owes ? "Pay bill" : monthly ? "How to pay" : "Top up"}</Text>
                 </TouchableOpacity>
 
                 <View style={w.infoRow}>
                   <Card style={w.infoCard}>
-                    <Text style={w.infoL}>COMMISSION</Text>
+                    <Text style={w.infoL}>PLATFORM FEE</Text>
                     <Text style={w.infoN}>{feeLabel}</Text>
-                    <Text style={w.infoS}>auto-deducted per trip</Text>
+                    <Text style={w.infoS}>{monthly ? "per trip, billed monthly" : "auto-deducted per trip"}</Text>
                   </Card>
-                  <Card style={w.infoCard}>
-                    <Text style={w.infoL}>MIN BALANCE</Text>
-                    <Text style={w.infoN}>RM {state.minBalance.toFixed(0)}</Text>
-                    <Text style={w.infoS}>required to go online</Text>
-                  </Card>
+                  {monthly ? (
+                    <Card style={w.infoCard}>
+                      <Text style={w.infoL}>CREDIT LEFT</Text>
+                      <Text style={w.infoN}>RM {Math.max(0, state.availableCredit).toFixed(0)}</Text>
+                      <Text style={w.infoS}>of RM {state.creditLimit.toFixed(0)} limit</Text>
+                    </Card>
+                  ) : (
+                    <Card style={w.infoCard}>
+                      <Text style={w.infoL}>MIN BALANCE</Text>
+                      <Text style={w.infoN}>RM {state.minBalance.toFixed(0)}</Text>
+                      <Text style={w.infoS}>required to go online</Text>
+                    </Card>
+                  )}
                 </View>
 
-                {state.minBalance > 0 && (
+                {monthly ? (
+                  <View style={w.notice}>
+                    <Ionicons name="information-circle-outline" size={17} color={C.tealDeep} />
+                    <Text style={w.noticeT}>
+                      Patients pay you directly. Lifeline's platform fee for each completed trip is
+                      added to your monthly bill. New jobs pause if you owe more than your credit
+                      limit, and resume once your payment is recorded.
+                    </Text>
+                  </View>
+                ) : state.minBalance > 0 && (
                   <View style={w.notice}>
                     <Ionicons name="information-circle-outline" size={17} color={C.tealDeep} />
                     <Text style={w.noticeT}>
                       Keep at least <Text style={{ fontWeight: "800" }}>RM {state.minBalance.toFixed(0)}</Text> to
-                      stay online. Commission for each completed trip is deducted automatically.
+                      stay online. The platform fee for each completed trip is deducted automatically.
                     </Text>
                   </View>
                 )}

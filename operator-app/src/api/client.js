@@ -57,6 +57,9 @@ export const setAvailability = (online) =>
   req("/api/operator/availability", { method: "POST", body: JSON.stringify({ online }) });
 export const getOperatorBookings = () => req("/api/operator/bookings");
 export const getOperatorWallet = () => req("/api/operator/wallet");
+export const getOperatorStatement = (month) =>
+  req(`/api/operator/statement${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+export const getPayTo = () => req("/api/operator/pay-to");
 export const getPaymentsStatus = () => req("/api/payments/status");
 export const createTopup = (amount) => req("/api/payments/topup", { method: "POST", body: JSON.stringify({ amount }) });
 export const savePushToken = (pushToken) => req("/api/operator/push-token", { method: "POST", body: JSON.stringify({ pushToken }) });

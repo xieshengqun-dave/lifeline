@@ -26,6 +26,7 @@ import ActiveTripScreen from "./src/screens/ActiveTripScreen";
 import TripHistoryScreen from "./src/screens/TripHistoryScreen";
 import WalletScreen from "./src/screens/WalletScreen";
 import TopUpScreen from "./src/screens/TopUpScreen";
+import PayBillScreen from "./src/screens/PayBillScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 
 const Stack = createNativeStackNavigator();
@@ -191,6 +192,7 @@ export default function App() {
             <Stack.Screen name="IncomingRequests" component={IncomingRequestsScreen} />
             <Stack.Screen name="Wallet" component={WalletScreen} />
             <Stack.Screen name="TopUp" component={TopUpScreen} />
+            <Stack.Screen name="PayBill" component={PayBillScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="ActiveTrip" component={ActiveTripScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="TripHistory" component={TripHistoryScreen} />

@@ -301,5 +301,17 @@ model PlatformSettings {
   // disables the gate). Enforced server-side on the availability toggle;
   // complements the per-job fee gate, doesn't replace it.
   minWalletBalance Float @default(50)
+  // Monthly billing (2026-10-20): how far (RM) an operator's wallet may go
+  // negative before they stop receiving jobs. Patients pay operators
+  // directly; fees accrue as a negative balance (= amount owed) and are
+  // billed monthly. 0 = prepaid-only (the original no-debt rule).
+  creditLimit Float @default(0)
+  // Where operators pay their monthly bill (shown in the operator app).
+  // QR is a small image data URL (company DuitNow QR), not payment data.
+  billingAccountName   String?
+  billingBankName      String?
+  billingAccountNumber String?
+  billingInstructions  String?
+  billingQrImage       String?
   updatedAt DateTime @updatedAt
 }

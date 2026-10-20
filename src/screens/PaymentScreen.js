@@ -49,7 +49,7 @@ export default function PaymentScreen({ navigation }) {
 
         <Text style={pm.disclaimer}>
           {booking.payMethod === "cash"
-            ? "Pay the total to the ambulance crew directly in cash when the trip completes. Nothing is charged through the app."
+            ? "Pay the total directly to the ambulance operator when the trip completes, by cash or the operator's DuitNow QR. Nothing is charged through the app."
             : "Already paid in-app — nothing to pay the crew. A full refund is automatic if the trip can't go ahead."}
         </Text>
       </ScrollView>

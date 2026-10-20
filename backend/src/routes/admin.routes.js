@@ -13,7 +13,12 @@ import {
   updateOfferTimeoutSeconds,
   getMinWalletBalance,
   updateMinWalletBalance,
+  getCreditLimit,
+  updateCreditLimit,
+  getBillingPayTo,
+  updateBillingPayTo,
 } from "../services/settings.js";
+import { getOperatorStatement, getBillingSummary, currentMonth } from "../services/billing.js";
 import { getCompletedTripCounts } from "../services/rating.js";
 import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
 
@@ -187,6 +192,87 @@ router.put(
   validate(minBalanceSchema),
   asyncHandler(async (req, res) => {
     res.json({ amount: (await updateMinWalletBalance(req.body.amount)).minWalletBalance });
+  })
+);
+
+// Monthly billing credit limit (RM an operator may owe before they stop
+// receiving jobs; 0 = prepaid only, the original no-debt rule).
+const creditLimitSchema = z.object({ amount: z.number().min(0).max(100000) });
+
+router.get(
+  "/settings/credit-limit",
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    res.json({ amount: await getCreditLimit() });
+  })
+);
+
+router.put(
+  "/settings/credit-limit",
+  requireAdmin,
+  validate(creditLimitSchema),
+  asyncHandler(async (req, res) => {
+    res.json({ amount: (await updateCreditLimit(req.body.amount)).creditLimit });
+  })
+);
+
+// Company payment details shown to operators for paying their bill. Blank
+// PUT replaces the whole set: blank or omitted fields are cleared. The QR
+// is a PNG/JPEG data URL (~700 KB image at most).
+const optionalText = (max) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null));
+
+const payToSchema = z.object({
+  accountName: optionalText(120),
+  bankName: optionalText(80),
+  accountNumber: optionalText(40),
+  instructions: optionalText(500),
+  qrImage: z
+    .string()
+    .max(1_000_000)
+    .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/, "QR must be a PNG or JPEG image")
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
+});
+
+router.get(
+  "/settings/pay-to",
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    res.json(await getBillingPayTo());
+  })
+);
+
+router.put(
+  "/settings/pay-to",
+  requireAdmin,
+  validate(payToSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await updateBillingPayTo(req.body));
+  })
+);
+
+// ── Monthly billing (2026-10-20) ──
+router.get(
+  "/billing",
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    res.json(await getBillingSummary(req.query.month || currentMonth()));
+  })
+);
+
+router.get(
+  "/operators/:id/statement",
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    res.json(await getOperatorStatement(req.params.id, req.query.month || currentMonth()));
   })
 );
 

@@ -16,6 +16,7 @@ export async function getAllSettings() {
       : { feeType: PLATFORM_FEE_TYPE.FLAT, feeValue: config.platformServiceFee },
     offerTimeoutSeconds: row?.offerTimeoutSeconds ?? config.offerTimeoutSeconds,
     minWalletBalance: row?.minWalletBalance ?? 50,
+    creditLimit: row?.creditLimit ?? 0,
   };
 }
 
@@ -67,6 +68,63 @@ export async function updateMinWalletBalance(amount) {
     create: { id: SETTINGS_ID, minWalletBalance: amount },
   });
   return { minWalletBalance: row.minWalletBalance };
+}
+
+// Monthly billing credit limit (RM an operator may owe; 0 = prepaid only).
+export async function getCreditLimit() {
+  const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
+  return row?.creditLimit ?? 0;
+}
+
+export async function updateCreditLimit(amount) {
+  const row = await prisma.platformSettings.upsert({
+    where: { id: SETTINGS_ID },
+    update: { creditLimit: amount },
+    create: { id: SETTINGS_ID, creditLimit: amount },
+  });
+  return { creditLimit: row.creditLimit };
+}
+
+// Where operators pay their monthly bill. Every field optional — the
+// operator app shows whatever the admin has filled in.
+const BILLING_FIELDS = [
+  "billingAccountName",
+  "billingBankName",
+  "billingAccountNumber",
+  "billingInstructions",
+  "billingQrImage",
+];
+
+const toPayTo = (row) => ({
+  accountName: row?.billingAccountName ?? null,
+  bankName: row?.billingBankName ?? null,
+  accountNumber: row?.billingAccountNumber ?? null,
+  instructions: row?.billingInstructions ?? null,
+  qrImage: row?.billingQrImage ?? null,
+});
+
+export async function getBillingPayTo() {
+  const row = await prisma.platformSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: Object.fromEntries(BILLING_FIELDS.map((f) => [f, true])),
+  });
+  return toPayTo(row);
+}
+
+export async function updateBillingPayTo({ accountName, bankName, accountNumber, instructions, qrImage }) {
+  const data = {
+    billingAccountName: accountName,
+    billingBankName: bankName,
+    billingAccountNumber: accountNumber,
+    billingInstructions: instructions,
+    billingQrImage: qrImage,
+  };
+  const row = await prisma.platformSettings.upsert({
+    where: { id: SETTINGS_ID },
+    update: data,
+    create: { id: SETTINGS_ID, ...data },
+  });
+  return toPayTo(row);
 }
 
 export function resolveFeeAmount(setting, subtotal) {

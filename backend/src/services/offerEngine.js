@@ -177,9 +177,9 @@ async function affordableCandidates(candidates, distanceKm, booking) {
   // Prepaid bookings: the fee comes out of the patient's payment, not the
   // operator's wallet — the wallet gate doesn't apply.
   if (booking?.paidAt) return candidates;
-  const feeSetting = await getPlatformFeeSetting();
+  const { feeSetting, creditLimit } = await getAllSettings();
   return candidates.filter(({ operator }) =>
-    canCoverFee(operator, computeFare({ operator, distanceKm, feeSetting }).serviceFee)
+    canCoverFee(operator, computeFare({ operator, distanceKm, feeSetting }).serviceFee, creditLimit)
   );
 }
 

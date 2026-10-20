@@ -2,7 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireOperatorAuth } from "../lib/auth.js";
-import { getMinWalletBalance, getAllSettings } from "../services/settings.js";
+import { getAllSettings, getBillingPayTo } from "../services/settings.js";
+import { availableCredit, amountOwed } from "../services/wallet.js";
+import { getOperatorStatement, currentMonth } from "../services/billing.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { acceptOffer, declineOffer } from "../services/offerEngine.js";
@@ -161,19 +163,24 @@ router.post(
   requireOperatorAuth,
   validate(availabilitySchema),
   asyncHandler(async (req, res) => {
-    // BO-set minimum float to go online (server-side — a client-only check
-    // is not sufficient, per the design spec's own note). Going OFFLINE is
-    // always allowed.
+    // BO-set minimum to go online (server-side — a client-only check is not
+    // sufficient, per the design spec's own note). With monthly billing the
+    // check is on available credit (balance + credit limit), so an operator
+    // can keep working while they owe less than their limit. Going OFFLINE
+    // is always allowed.
     if (req.body.online) {
-      const [operator, minBalance] = await Promise.all([
+      const [operator, settings] = await Promise.all([
         prisma.operator.findUnique({ where: { id: req.operatorId }, select: { walletBalance: true } }),
-        getMinWalletBalance(),
+        getAllSettings(),
       ]);
-      if (minBalance > 0 && operator.walletBalance < minBalance) {
+      const { minWalletBalance: minBalance, creditLimit } = settings;
+      if (minBalance > 0 && availableCredit(operator, creditLimit) < minBalance) {
         throw new HttpError(
           409,
           "min_balance",
-          `Wallet balance must be at least RM ${minBalance.toFixed(0)} to go online — top up to continue receiving requests`
+          creditLimit > 0
+            ? `You've reached your credit limit (RM ${creditLimit.toFixed(0)}) — pay your outstanding bill to continue receiving requests`
+            : `Wallet balance must be at least RM ${minBalance.toFixed(0)} to go online — top up to continue receiving requests`
         );
       }
     }
@@ -201,9 +208,30 @@ router.get(
     res.json({
       balance: operator.walletBalance,
       minBalance: settings.minWalletBalance,
+      creditLimit: settings.creditLimit,
+      availableCredit: availableCredit(operator, settings.creditLimit),
+      amountOwed: amountOwed(operator.walletBalance),
       fee: settings.feeSetting,
       transactions,
     });
+  })
+);
+
+// Monthly statement (?month=YYYY-MM, default: this month in MYT).
+router.get(
+  "/statement",
+  requireOperatorAuth,
+  asyncHandler(async (req, res) => {
+    res.json(await getOperatorStatement(req.operatorId, req.query.month || currentMonth()));
+  })
+);
+
+// Where to pay the monthly bill (company bank details / DuitNow QR).
+router.get(
+  "/pay-to",
+  requireOperatorAuth,
+  asyncHandler(async (_req, res) => {
+    res.json(await getBillingPayTo());
   })
 );
 

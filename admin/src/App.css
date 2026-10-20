@@ -871,3 +871,84 @@ tr.row-accent-amber {
   font-weight: 600;
   text-decoration: underline;
 }
+
+/* Monthly billing statement (BillingPage) */
+.statement {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  padding: 28px;
+  max-width: 860px;
+}
+
+.statement-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.statement-title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.statement-sub,
+.statement-to {
+  font-size: 13px;
+  color: var(--color-faint);
+}
+
+.statement-to {
+  text-align: right;
+}
+
+.statement-summary {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  padding: 6px 16px;
+  margin-bottom: 22px;
+  font-size: 13.5px;
+}
+
+.statement-summary > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.statement-total {
+  border-top: 1px solid var(--color-line);
+  font-weight: 700;
+}
+
+.statement-due {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-red);
+}
+
+.statement-table td.statement-desc {
+  white-space: normal;
+}
+
+.statement-foot {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--color-faint);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .content-area,
+  .page {
+    padding: 0;
+    background: #fff;
+  }
+  .statement {
+    border: none;
+    max-width: none;
+  }
+}

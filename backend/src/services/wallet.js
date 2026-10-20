@@ -101,9 +101,16 @@ export async function creditTripEarning(booking) {
   }
 }
 
-// Offer-time gate (decided 2026-07-31): an operator only receives a job if
-// their wallet covers that job's service fee — no debt by design.
-export function canCoverFee(operator, serviceFee) {
+// Offer-time gate. Originally (2026-07-31) prepaid-only: the wallet had to
+// cover the job's fee, no debt. Since monthly billing (2026-10-20) the
+// admin-set credit limit lets the balance go negative (= amount owed, billed
+// monthly) down to -creditLimit. creditLimit 0 keeps the original rule.
+export const availableCredit = (operator, creditLimit = 0) => operator.walletBalance + creditLimit;
+
+export function canCoverFee(operator, serviceFee, creditLimit = 0) {
   if (!serviceFee || serviceFee <= 0) return true;
-  return operator.walletBalance >= serviceFee;
+  return availableCredit(operator, creditLimit) >= serviceFee;
 }
+
+// Amount an operator owes the platform (a negative balance), never negative.
+export const amountOwed = (balance) => Math.max(0, Math.round(-balance * 100) / 100);

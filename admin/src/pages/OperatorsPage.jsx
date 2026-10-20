@@ -374,9 +374,9 @@ export default function OperatorsPage() {
           <div className="drawer-section-title">WALLET</div>
           <div className="rate-card-box">
             <div className="drawer-detail-row">
-              <span>Balance</span>
+              <span>{(selected.walletBalance ?? 0) < 0 ? "Owes Lifeline" : "Balance"}</span>
               <span style={{ fontWeight: 700, color: (selected.walletBalance ?? 0) < 30 ? "#c0392b" : undefined }}>
-                {formatMoney(selected.walletBalance ?? 0)}
+                {formatMoney(Math.abs(selected.walletBalance ?? 0))}
               </span>
             </div>
             {walletError && <div className="error-box" style={{ marginTop: 8 }}>{walletError}</div>}
@@ -386,7 +386,7 @@ export default function OperatorsPage() {
                 onChange={(e) => setWalletForm((f) => ({ ...f, type: e.target.value }))}
                 disabled={walletBusy}
               >
-                <option value="topup">Top-up</option>
+                <option value="topup">Payment received / top-up</option>
                 <option value="withdrawal">Withdrawal</option>
                 <option value="adjustment">Adjustment</option>
               </select>
@@ -400,7 +400,7 @@ export default function OperatorsPage() {
               <input
                 className="wallet-form-wide"
                 type="text"
-                placeholder="Note / transfer ref"
+                placeholder="Bank transfer ref (e.g. Oct bill, ref 1234)"
                 value={walletForm.note}
                 onChange={(e) => setWalletForm((f) => ({ ...f, note: e.target.value }))}
                 disabled={walletBusy}
