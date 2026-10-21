@@ -244,10 +244,18 @@ with a credit limit**, operators pay by bank transfer/DuitNow, admin records it.
   pay-to fields (`billingAccountName/BankName/AccountNumber/Instructions/QrImage`;
   QR is a PNG/JPEG data URL, route-specific 1mb body limit). Migration
   `20261020090000_monthly_billing_credit_limit` was **hand-generated with
-  `prisma migrate diff`** (local dev DB credentials no longer match — the
-  Postgres on :5432 is now a `~/.local/opt/pgsql-18` instance without the
-  `lifeline` role; Homebrew PG16 is gone). Railway applies it on deploy
-  (`prestart` runs `migrate deploy`).
+  `prisma migrate diff`** (there is no working local Lifeline DB on this Mac —
+  Lifeline runs on Railway, not locally). **Deploy path (confirmed 2026-10-21
+  from GitHub's deployment records): push to GitHub `main` → Railway project
+  `lovely-essence` auto-deploys** the backend, and `prestart` runs
+  `migrate deploy` against the Railway Postgres. No Supabase involved (the
+  Supabase containers on this Mac belong to another project).
+  - **⚠ The Railway CLI in `backend/` is linked to the WRONG project**
+    (`surprising-patience` = medideliver-backend). Never `railway up` /
+    `railway variables` from here without `railway link` to `lovely-essence`
+    first — it would act on medideliver.
+  - The GitHub repo is **public**. Secrets are fine (CREDENTIALS.md and .env
+    files are gitignored and absent from history), but the code is visible.
   - Gates now use **available credit = balance + creditLimit**: per-job fee gate
     (quote + offer engine) and the go-online minimum. Error copy mentions the
     credit limit when one is set.
