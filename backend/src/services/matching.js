@@ -3,8 +3,8 @@ import { haversineKm, boundingBox } from "../lib/geo.js";
 import { VETTING_STATUS } from "../lib/constants.js";
 
 // Finds operators eligible to be offered a booking from this pickup point:
-// approved + online, within their own serviceRadiusKm, not already tried for
-// this booking. Ranked nearest first. Bounding-box prefilter (index-assisted)
+// approved + online + not paused for billing (SaaS, 2026-11-04), within
+// their own serviceRadiusKm, not already tried for this booking. Ranked nearest first. Bounding-box prefilter (index-assisted)
 // + exact Haversine on the small candidate set — see lib/geo.js for why this
 // is preferred over PostGIS at pilot scale.
 export async function findEligibleOperators({ pickupLat, pickupLng, excludeOperatorIds = [] }) {
@@ -16,6 +16,7 @@ export async function findEligibleOperators({ pickupLat, pickupLng, excludeOpera
     where: {
       vettingStatus: VETTING_STATUS.APPROVED,
       online: true,
+      billingHold: false,
       id: { notIn: excludeOperatorIds },
       baseLat: { gte: box.minLat, lte: box.maxLat },
       baseLng: { gte: box.minLng, lte: box.maxLng },

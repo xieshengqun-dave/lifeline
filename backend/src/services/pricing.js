@@ -1,14 +1,10 @@
-import { resolveFeeAmount } from "./settings.js";
-
-// Fee model is additive (total = subtotal + fee) and the fee amount/type is
-// admin-configurable via PlatformSettings (see services/settings.js) — the
-// caller resolves the current setting once and passes it in, so this stays a
-// synchronous pure function.
-export function computeFare({ operator, distanceKm, feeSetting }) {
+// Patients pay the operator's own price and nothing else: since the SaaS
+// model (2026-11-04) Lifeline earns from operator subscriptions, not trips,
+// so there is no platform/service fee. serviceFee stays in the shape (always
+// 0) because bookings persist it and older bookings carry a real one.
+export function computeFare({ operator, distanceKm }) {
   const subtotal = Math.round((operator.baseFare + operator.perKmRate * distanceKm) * 100) / 100;
-  const serviceFee = resolveFeeAmount(feeSetting, subtotal);
-  const total = Math.round((subtotal + serviceFee) * 100) / 100;
-  return { subtotal, serviceFee, total };
+  return { subtotal, serviceFee: 0, total: subtotal };
 }
 
 // TODO(human): straight-line distance / fixed average-speed heuristic, not

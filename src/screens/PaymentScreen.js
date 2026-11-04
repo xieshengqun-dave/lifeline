@@ -39,8 +39,14 @@ export default function PaymentScreen({ navigation }) {
 
         <Card>
           <Text style={pm.sect}>AMOUNT</Text>
-          <View style={pm.row}><Text style={pm.l}>Subtotal</Text><Text style={pm.r}>RM {op?.price.subtotal.toFixed(2)}</Text></View>
-          <View style={pm.row}><Text style={pm.l}>Service Fee</Text><Text style={pm.r}>RM {op?.price.serviceFee.toFixed(2)}</Text></View>
+          {op?.price.serviceFee > 0 ? (
+            <>
+              <View style={pm.row}><Text style={pm.l}>Subtotal</Text><Text style={pm.r}>RM {op.price.subtotal.toFixed(2)}</Text></View>
+              <View style={pm.row}><Text style={pm.l}>Service Fee</Text><Text style={pm.r}>RM {op.price.serviceFee.toFixed(2)}</Text></View>
+            </>
+          ) : (
+            <View style={pm.row}><Text style={pm.l}>Operator's price</Text><Text style={pm.r}>RM {op?.price.subtotal.toFixed(2)}</Text></View>
+          )}
           <View style={pm.totalRow}>
             <Text style={pm.totalK}>Total</Text>
             <Text style={pm.totalV}>RM {op?.price.total.toFixed(2)}</Text>
@@ -49,7 +55,7 @@ export default function PaymentScreen({ navigation }) {
 
         <Text style={pm.disclaimer}>
           {booking.payMethod === "cash"
-            ? "Pay the total directly to the ambulance operator when the trip completes, by cash or the operator's DuitNow QR. Nothing is charged through the app."
+            ? "Pay the total directly to the ambulance operator when the trip completes, by cash or the operator's DuitNow QR. Nothing is charged through the app, and Lifeline adds no fees."
             : "Already paid in-app — nothing to pay the crew. A full refund is automatic if the trip can't go ahead."}
         </Text>
       </ScrollView>

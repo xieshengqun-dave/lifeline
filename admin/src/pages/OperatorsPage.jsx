@@ -1,5 +1,5 @@
 import React from "react";
-import { getOperators, createOperator, updateOperator, approveOperator, suspendOperator, getOperatorWallet, applyWalletTransaction } from "../api/client";
+import { getOperators, createOperator, updateOperator, approveOperator, suspendOperator, getOperatorWallet, applyWalletTransaction, updateOperatorBilling } from "../api/client";
 import { formatMoney } from "../lib/format";
 import StatusBadge from "../components/StatusBadge";
 
@@ -45,6 +45,9 @@ export default function OperatorsPage() {
   const [walletForm, setWalletForm] = React.useState({ type: "topup", amount: "", note: "" });
   const [walletError, setWalletError] = React.useState(null);
   const [walletBusy, setWalletBusy] = React.useState(false);
+  const [priceInput, setPriceInput] = React.useState("");
+  const [billingBusy, setBillingBusy] = React.useState(false);
+  const [billingError, setBillingError] = React.useState(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -69,6 +72,8 @@ export default function OperatorsPage() {
     let dead = false;
     setWalletTx([]);
     setWalletError(null);
+    setBillingError(null);
+    setPriceInput("");
     getOperatorWallet(selectedId)
       .then((w) => { if (!dead) setWalletTx(w.transactions); })
       .catch((err) => { if (!dead) setWalletError(err.message || "Could not load wallet."); });
@@ -94,11 +99,38 @@ export default function OperatorsPage() {
       setWalletTx((prev) => [row, ...prev]);
       setOperators((prev) => prev.map((o) => (o.id === operatorId ? { ...o, walletBalance: row.balanceAfter } : o)));
       setWalletForm({ type: "topup", amount: "", note: "" });
+      // A payment that clears the debt lifts an overdue pause server-side —
+      // refresh so the drawer shows it.
+      if (walletForm.type === "topup") getOperators().then(setOperators).catch(() => {});
     } catch (err) {
       setWalletError(err.message || "Wallet update failed.");
     } finally {
       setWalletBusy(false);
     }
+  }
+
+  // SaaS subscription controls: custom price (blank = BO default) and the
+  // manual pause that hides the operator from patients.
+  async function saveOperatorBilling(operatorId, data) {
+    setBillingBusy(true);
+    setBillingError(null);
+    setPriceInput("");
+    try {
+      const updated = await updateOperatorBilling(operatorId, data);
+      setOperators((prev) => prev.map((op) => (op.id === operatorId ? { ...op, ...updated } : op)));
+      return true;
+    } catch (err) {
+      setBillingError(err.message || "Could not update billing.");
+      return false;
+    } finally {
+      setBillingBusy(false);
+    }
+  }
+
+  function savePrice(operatorId) {
+    const raw = priceInput.trim();
+    if (raw !== "" && !(Number(raw) >= 0)) { setBillingError("Enter a price of RM0 or more, or leave blank for the default."); return; }
+    saveOperatorBilling(operatorId, { subscriptionPrice: raw === "" ? null : Number(raw) });
   }
 
   async function handleApprove(id) {
@@ -313,6 +345,7 @@ export default function OperatorsPage() {
                   <div className="operator-row-sub">{op.tripCount} trips · {op.fleetSummary || "no fleet on file"}</div>
                 </div>
                 <div className="operator-row-rating">{op.ratingAvg != null ? `★ ${op.ratingAvg.toFixed(1)}` : "—"}</div>
+                {op.billingHold && <StatusBadge tone="bad" label="paused" />}
                 <StatusBadge tone={TONE_BY_STATUS[op.vettingStatus]} label={op.vettingStatus} />
               </button>
             ))}
@@ -369,6 +402,43 @@ export default function OperatorsPage() {
           <div className="rate-card-box">
             <div className="drawer-detail-row"><span>Base dispatch</span><span>{formatMoney(selected.baseFare)}</span></div>
             <div className="drawer-detail-row"><span>Per km</span><span>{formatMoney(selected.perKmRate)}</span></div>
+          </div>
+
+          <div className="drawer-section-title">SUBSCRIPTION</div>
+          <div className="rate-card-box">
+            <div className="drawer-detail-row">
+              <span>Monthly price</span>
+              <span>{selected.subscriptionPrice != null ? formatMoney(selected.subscriptionPrice) : "Default (Settings)"}</span>
+            </div>
+            <div className="wallet-form">
+              <input
+                className="wallet-form-wide"
+                type="number"
+                min="0"
+                placeholder="Custom RM / month — blank = default"
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                disabled={billingBusy}
+              />
+            </div>
+            <button className="btn btn-outline drawer-btn" style={{ width: "100%" }} disabled={billingBusy} onClick={() => savePrice(selected.id)}>
+              Save price
+            </button>
+            <div className="drawer-detail-row" style={{ marginTop: 10 }}>
+              <span>Visible to patients</span>
+              <span style={{ fontWeight: 700, color: selected.billingHold ? "#c0392b" : "#1e8e5a" }}>
+                {selected.billingHold ? `Paused (${selected.billingHoldReason === "overdue" ? "unpaid bill" : "by admin"})` : "Yes"}
+              </span>
+            </div>
+            {billingError && <div className="error-box" style={{ marginTop: 8 }}>{billingError}</div>}
+            <button
+              className={`btn ${selected.billingHold ? "btn-primary" : "btn-danger"} drawer-btn`}
+              style={{ width: "100%" }}
+              disabled={billingBusy}
+              onClick={() => saveOperatorBilling(selected.id, { billingHold: !selected.billingHold })}
+            >
+              {selected.billingHold ? "Resume — show to patients" : "Pause — hide from patients"}
+            </button>
           </div>
 
           <div className="drawer-section-title">WALLET</div>

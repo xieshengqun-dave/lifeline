@@ -64,17 +64,14 @@ export const getOperatorWallet = (id) => req(`/api/admin/operators/${id}/wallet`
 export const applyWalletTransaction = (id, data) =>
   req(`/api/admin/operators/${id}/wallet`, { method: "POST", body: JSON.stringify(data) });
 export const getBookings = () => req("/api/admin/bookings");
-export const getPlatformFeeSetting = () => req("/api/admin/settings/platform-fee");
-export const updatePlatformFeeSetting = (p) => req("/api/admin/settings/platform-fee", { method: "PUT", body: JSON.stringify(p) });
 export const getOfferTimeoutSetting = () => req("/api/admin/settings/offer-timeout");
 export const updateOfferTimeoutSetting = (seconds) =>
   req("/api/admin/settings/offer-timeout", { method: "PUT", body: JSON.stringify({ seconds }) });
-export const getMinBalanceSetting = () => req("/api/admin/settings/min-wallet-balance");
-export const updateMinBalanceSetting = (amount) =>
-  req("/api/admin/settings/min-wallet-balance", { method: "PUT", body: JSON.stringify({ amount }) });
-export const getCreditLimitSetting = () => req("/api/admin/settings/credit-limit");
-export const updateCreditLimitSetting = (amount) =>
-  req("/api/admin/settings/credit-limit", { method: "PUT", body: JSON.stringify({ amount }) });
+export const getSubscriptionSetting = () => req("/api/admin/settings/subscription");
+export const updateSubscriptionSetting = (data) =>
+  req("/api/admin/settings/subscription", { method: "PUT", body: JSON.stringify(data) });
+export const updateOperatorBilling = (id, data) =>
+  req(`/api/admin/operators/${id}/billing`, { method: "POST", body: JSON.stringify(data) });
 export const getPayToSetting = () => req("/api/admin/settings/pay-to");
 export const updatePayToSetting = (data) =>
   req("/api/admin/settings/pay-to", { method: "PUT", body: JSON.stringify(data) });

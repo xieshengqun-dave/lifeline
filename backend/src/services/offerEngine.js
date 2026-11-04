@@ -3,13 +3,12 @@ import { config } from "../lib/env.js";
 import { emitToBooking, emitToOperator } from "../lib/socket.js";
 import { findEligibleOperators } from "./matching.js";
 import { computeFare, computeEtaMinutes } from "./pricing.js";
-import { getPlatformFeeSetting, getAllSettings } from "./settings.js";
+import { getAllSettings } from "./settings.js";
 import { BOOKING_STATUS, OFFER_STATUS, PAYMENT_STATUS, BOOKING_STATUS_PROGRESSION } from "../lib/constants.js";
 import { pushToUser, pushToOperator } from "./push.js";
 import {
   chargeServiceFee,
   creditTripEarning,
-  canCoverFee,
   applyWalletTransaction,
   WALLET_TX_TYPE,
   isDuplicateMovement,
@@ -87,11 +86,11 @@ async function offerToOperator(booking, candidate, sequence) {
   // offer so the fee active *at offer time* locks into serviceFee/total.
   // One settings fetch covers both the fee (cash pricing) and the accept
   // window — read fresh per offer so BO changes apply to the NEXT offer only.
-  const { feeSetting, offerTimeoutSeconds: timeoutSeconds } = await getAllSettings();
+  const { offerTimeoutSeconds: timeoutSeconds } = await getAllSettings();
   const prepaid = !!booking.paidAt;
   const price = prepaid
     ? { subtotal: booking.subtotal, serviceFee: booking.serviceFee, total: booking.total }
-    : computeFare({ operator: candidate.operator, distanceKm: booking.distanceKm, feeSetting });
+    : computeFare({ operator: candidate.operator, distanceKm: booking.distanceKm });
   const offeredAt = new Date();
   const expiresAt = new Date(offeredAt.getTime() + timeoutSeconds * 1000);
 
@@ -165,22 +164,6 @@ async function offerToOperator(booking, candidate, sequence) {
   });
 
   return { offer, booking: updated };
-}
-
-// Wallet gate (decided 2026-07-31): only operators whose wallet covers this
-// job's service fee may receive it — the fee is deducted on completion and
-// no debt accrues by design. Applied wherever a candidate list is chosen
-// from (initial offer, cascade, scheduled dispatch); the patient-facing
-// quote applies the same rule so patients never see un-offerable operators.
-async function affordableCandidates(candidates, distanceKm, booking) {
-  if (!candidates.length) return candidates;
-  // Prepaid bookings: the fee comes out of the patient's payment, not the
-  // operator's wallet — the wallet gate doesn't apply.
-  if (booking?.paidAt) return candidates;
-  const { feeSetting, creditLimit } = await getAllSettings();
-  return candidates.filter(({ operator }) =>
-    canCoverFee(operator, computeFare({ operator, distanceKm, feeSetting }).serviceFee, creditLimit)
-  );
 }
 
 // Refund a prepaid booking in full (no-operator expiry / cancellation).
@@ -286,15 +269,11 @@ export async function advanceToNextOperator(bookingId, reason) {
   emitToBooking(bookingId, "booking:status_changed", { bookingId, status: BOOKING_STATUS.DECLINED, reason });
 
   const triedOperatorIds = booking.offers.map((o) => o.operatorId);
-  const candidates = await affordableCandidates(
-    await findEligibleOperators({
-      pickupLat: booking.pickupLat,
-      pickupLng: booking.pickupLng,
-      excludeOperatorIds: triedOperatorIds,
-    }),
-    booking.distanceKm,
-    booking
-  );
+  const candidates = await findEligibleOperators({
+    pickupLat: booking.pickupLat,
+    pickupLng: booking.pickupLng,
+    excludeOperatorIds: triedOperatorIds,
+  });
 
   if (candidates.length === 0) {
     return expireBookingNoOperators(bookingId);
@@ -371,8 +350,7 @@ export async function createBookingWithFirstOffer({
   if (prepaid) {
     const chosenOperator = await prisma.operator.findUnique({ where: { id: chosenOperatorId } });
     if (!chosenOperator) throw new HttpError(404, "not_found", "Chosen operator not found");
-    const feeSetting = await getPlatformFeeSetting();
-    lockedPrice = computeFare({ operator: chosenOperator, distanceKm, feeSetting });
+    lockedPrice = computeFare({ operator: chosenOperator, distanceKm });
   }
 
   const booking = await prisma.booking.create({
@@ -426,15 +404,11 @@ export async function createBookingWithFirstOffer({
 // (and refund, if prepaid) when nobody can take it. Shared by the cash
 // booking path and the paid-dispatch path.
 async function dispatchImmediate(booking, chosenOperatorId = booking.preferredOperatorId) {
-  const candidates = await affordableCandidates(
-    await findEligibleOperators({
-      pickupLat: booking.pickupLat,
-      pickupLng: booking.pickupLng,
-      excludeOperatorIds: [],
-    }),
-    booking.distanceKm,
-    booking
-  );
+  const candidates = await findEligibleOperators({
+    pickupLat: booking.pickupLat,
+    pickupLng: booking.pickupLng,
+    excludeOperatorIds: [],
+  });
 
   const chosen = candidates.find((c) => c.operator.id === chosenOperatorId);
   const nextBest = chosen || candidates[0];
@@ -510,15 +484,11 @@ export async function dispatchScheduledBooking(bookingId) {
   if (!booking || booking.status !== BOOKING_STATUS.REQUESTED || !booking.scheduledAt) return booking;
   if (booking.offers.length > 0) return booking;
 
-  const candidates = await affordableCandidates(
-    await findEligibleOperators({
-      pickupLat: booking.pickupLat,
-      pickupLng: booking.pickupLng,
-      excludeOperatorIds: [],
-    }),
-    booking.distanceKm,
-    booking
-  );
+  const candidates = await findEligibleOperators({
+    pickupLat: booking.pickupLat,
+    pickupLng: booking.pickupLng,
+    excludeOperatorIds: [],
+  });
   const chosen = candidates.find((c) => c.operator.id === booking.preferredOperatorId);
   const nextBest = chosen || candidates[0];
 

@@ -1,35 +1,26 @@
 import React from "react";
-import { getPlatformFeeSetting, updatePlatformFeeSetting, getOfferTimeoutSetting, updateOfferTimeoutSetting, getMinBalanceSetting, updateMinBalanceSetting, getCreditLimitSetting, updateCreditLimitSetting, getPayToSetting, updatePayToSetting } from "../api/client";
+import { getOfferTimeoutSetting, updateOfferTimeoutSetting, getSubscriptionSetting, updateSubscriptionSetting, getPayToSetting, updatePayToSetting } from "../api/client";
 
 const MAX_QR_BYTES = 700 * 1024;
 const EMPTY_PAY_TO = { accountName: "", bankName: "", accountNumber: "", instructions: "", qrImage: null };
 
-// Not in the original design spec at all — a genuinely new screen. The
-// platform fee (flat RM or a %) was previously hardcoded; this is where an
-// admin now actually controls it, rather than either number being baked
-// into the codebase.
+// Not in the original design spec at all — a genuinely new screen. Since the
+// SaaS model (2026-11-04) it holds the operator subscription (price, due day,
+// grace days) instead of the old per-trip platform fee / minimum balance /
+// credit limit, plus the accept window and where operators pay.
 export default function SettingsPage() {
   const [loading, setLoading] = React.useState(true);
-  const [feeType, setFeeType] = React.useState("flat");
-  const [feeValue, setFeeValue] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
-  const [saved, setSaved] = React.useState(false);
+
+  const [sub, setSub] = React.useState({ price: "", dueDay: "", graceDays: "" });
+  const [subSaving, setSubSaving] = React.useState(false);
+  const [subSaved, setSubSaved] = React.useState(false);
+  const [subError, setSubError] = React.useState(null);
 
   const [timeoutSeconds, setTimeoutSeconds] = React.useState("");
   const [timeoutSaving, setTimeoutSaving] = React.useState(false);
   const [timeoutSaved, setTimeoutSaved] = React.useState(false);
   const [timeoutError, setTimeoutError] = React.useState(null);
-
-  const [minBalance, setMinBalance] = React.useState("");
-  const [minBalanceSaving, setMinBalanceSaving] = React.useState(false);
-  const [minBalanceSaved, setMinBalanceSaved] = React.useState(false);
-  const [minBalanceError, setMinBalanceError] = React.useState(null);
-
-  const [creditLimit, setCreditLimit] = React.useState("");
-  const [creditSaving, setCreditSaving] = React.useState(false);
-  const [creditSaved, setCreditSaved] = React.useState(false);
-  const [creditError, setCreditError] = React.useState(null);
 
   const [payTo, setPayTo] = React.useState(EMPTY_PAY_TO);
   const [payToSaving, setPayToSaving] = React.useState(false);
@@ -39,18 +30,13 @@ export default function SettingsPage() {
   React.useEffect(() => {
     (async () => {
       try {
-        const [s, t, m, c, p] = await Promise.all([
-          getPlatformFeeSetting(),
+        const [t, subRes, p] = await Promise.all([
           getOfferTimeoutSetting(),
-          getMinBalanceSetting(),
-          getCreditLimitSetting(),
+          getSubscriptionSetting(),
           getPayToSetting(),
         ]);
-        setFeeType(s.feeType);
-        setFeeValue(String(s.feeValue));
         setTimeoutSeconds(String(t.seconds));
-        setMinBalance(String(m.amount));
-        setCreditLimit(String(c.amount));
+        setSub({ price: String(subRes.price), dueDay: String(subRes.dueDay), graceDays: String(subRes.graceDays) });
         setPayTo({
           accountName: p.accountName || "",
           bankName: p.bankName || "",
@@ -66,19 +52,28 @@ export default function SettingsPage() {
     })();
   }, []);
 
-  async function saveCreditLimit() {
-    setCreditSaving(true);
-    setCreditError(null);
-    setCreditSaved(false);
+  async function saveSubscription() {
+    setSubSaving(true);
+    setSubError(null);
+    setSubSaved(false);
     try {
-      const c = await updateCreditLimitSetting(parseFloat(creditLimit));
-      setCreditLimit(String(c.amount));
-      setCreditSaved(true);
+      const r = await updateSubscriptionSetting({
+        price: parseFloat(sub.price),
+        dueDay: parseInt(sub.dueDay, 10),
+        graceDays: parseInt(sub.graceDays, 10),
+      });
+      setSub({ price: String(r.price), dueDay: String(r.dueDay), graceDays: String(r.graceDays) });
+      setSubSaved(true);
     } catch (err) {
-      setCreditError(err.message || "Could not save (allowed range: RM0–100,000).");
+      setSubError(err.message || "Could not save (due day 1–28, grace 0–60 days).");
     } finally {
-      setCreditSaving(false);
+      setSubSaving(false);
     }
+  }
+
+  function editSub(field, value) {
+    setSub((x) => ({ ...x, [field]: value }));
+    setSubSaved(false);
   }
 
   function editPayTo(field, value) {
@@ -128,21 +123,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveMinBalance() {
-    setMinBalanceSaving(true);
-    setMinBalanceError(null);
-    setMinBalanceSaved(false);
-    try {
-      const m = await updateMinBalanceSetting(parseFloat(minBalance));
-      setMinBalance(String(m.amount));
-      setMinBalanceSaved(true);
-    } catch (err) {
-      setMinBalanceError(err.message || "Could not save (allowed range: RM0–1000).");
-    } finally {
-      setMinBalanceSaving(false);
-    }
-  }
-
   async function saveTimeout() {
     setTimeoutSaving(true);
     setTimeoutError(null);
@@ -155,21 +135,6 @@ export default function SettingsPage() {
       setTimeoutError(err.message || "Could not save (allowed range: 15–300 seconds).");
     } finally {
       setTimeoutSaving(false);
-    }
-  }
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    setSaved(false);
-    try {
-      const value = parseFloat(feeValue);
-      await updatePlatformFeeSetting({ feeType, feeValue: value });
-      setSaved(true);
-    } catch (err) {
-      setError(err.message || "Could not save settings.");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -187,38 +152,46 @@ export default function SettingsPage() {
         <h1 className="page-title">Settings</h1>
       </div>
 
+      {error && <div className="error-box">{error}</div>}
+
       <div className="settings-card">
+        <div className="settings-label" style={{ marginBottom: 4 }}>Operator subscription</div>
+        <div style={{ fontSize: 12, color: "#5b6b73", marginBottom: 12 }}>
+          Patients pay operators directly and Lifeline charges no trip fee. Each approved
+          operator is charged this monthly subscription on the 1st (from the month after
+          approval). A custom price per operator can be set in Operators → drawer. RM0 = not
+          charging yet.
+        </div>
         <div className="settings-row">
-          <label className="settings-label">Platform Fee Type</label>
-          <div className="settings-toggle">
-            <button className={`settings-toggle-btn ${feeType === "flat" ? "active" : ""}`} onClick={() => setFeeType("flat")}>
-              Flat (RM)
-            </button>
-            <button className={`settings-toggle-btn ${feeType === "percent" ? "active" : ""}`} onClick={() => setFeeType("percent")}>
-              Percentage (%)
-            </button>
+          <label className="settings-label">Monthly price (RM)</label>
+          <input className="settings-input" type="number" min="0" step="10" value={sub.price}
+            onChange={(e) => editSub("price", e.target.value)} />
+        </div>
+        <div className="settings-row">
+          <label className="settings-label">Due by day of the month (1–28)</label>
+          <input className="settings-input" type="number" min="1" max="28" step="1" value={sub.dueDay}
+            onChange={(e) => editSub("dueDay", e.target.value)} />
+        </div>
+        <div className="settings-row">
+          <label className="settings-label">Grace days before pausing (0–60)</label>
+          <input className="settings-input" type="number" min="0" max="60" step="1" value={sub.graceDays}
+            onChange={(e) => editSub("graceDays", e.target.value)} />
+          <div style={{ fontSize: 12, color: "#5b6b73", marginTop: 6 }}>
+            An operator who still owes money this many days after the due date is paused
+            automatically: hidden from patients until you record their payment.
           </div>
         </div>
 
-        <div className="settings-row">
-          <label className="settings-label">{feeType === "percent" ? "Percentage of fare subtotal" : "Flat amount per trip (RM)"}</label>
-          <div className="settings-input-row">
-            <input
-              className="settings-input"
-              type="number"
-              step="0.01"
-              value={feeValue}
-              onChange={(e) => { setFeeValue(e.target.value); setSaved(false); }}
-            />
-          </div>
-        </div>
+        {subError && <div className="error-box">{subError}</div>}
 
-        {error && <div className="error-box">{error}</div>}
-
-        <button className="settings-save-btn" onClick={save} disabled={saving || !feeValue}>
-          {saving ? "Saving…" : "Save changes"}
+        <button
+          className="settings-save-btn"
+          onClick={saveSubscription}
+          disabled={subSaving || sub.price === "" || sub.dueDay === "" || sub.graceDays === ""}
+        >
+          {subSaving ? "Saving…" : "Save subscription"}
         </button>
-        {saved && <div className="settings-success">Saved — new bookings will use this fee immediately.</div>}
+        {subSaved && <div className="settings-success">Saved — applies from the next billing run.</div>}
       </div>
 
       <div className="settings-card" style={{ marginTop: 18 }}>
@@ -255,75 +228,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="settings-card" style={{ marginTop: 18 }}>
-        <div className="settings-row">
-          <label className="settings-label">Minimum wallet balance to go online (RM)</label>
-          <div className="settings-input-row">
-            <input
-              className="settings-input"
-              type="number"
-              min="0"
-              max="1000"
-              step="10"
-              value={minBalance}
-              onChange={(e) => { setMinBalance(e.target.value); setMinBalanceSaved(false); }}
-            />
-          </div>
-          <div style={{ fontSize: 12, color: "#5b6b73", marginTop: 6 }}>
-            Operators whose available credit (balance + credit limit) is below this
-            can't flip themselves online (enforced server-side). Set 0 to disable. The
-            per-job rule still applies either way: an operator never receives a job whose
-            platform fee their available credit can't cover.
-          </div>
-        </div>
-
-        {minBalanceError && <div className="error-box">{minBalanceError}</div>}
-
-        <button
-          className="settings-save-btn"
-          onClick={saveMinBalance}
-          disabled={minBalanceSaving || minBalance === ""}
-        >
-          {minBalanceSaving ? "Saving…" : "Save minimum balance"}
-        </button>
-        {minBalanceSaved && <div className="settings-success">Saved — applies the next time an operator tries to go online.</div>}
-      </div>
-
-      <div className="settings-card" style={{ marginTop: 18 }}>
-        <div className="settings-row">
-          <label className="settings-label">Monthly billing — credit limit per operator (RM)</label>
-          <div className="settings-input-row">
-            <input
-              className="settings-input"
-              type="number"
-              min="0"
-              max="100000"
-              step="50"
-              value={creditLimit}
-              onChange={(e) => { setCreditLimit(e.target.value); setCreditSaved(false); }}
-            />
-          </div>
-          <div style={{ fontSize: 12, color: "#5b6b73", marginTop: 6 }}>
-            Patients pay operators directly, and platform fees are billed monthly. This
-            is how much an operator may owe before they stop receiving new jobs; they
-            start again once their payment is recorded. Set 0 for prepaid only
-            (operators must top up before working).
-          </div>
-        </div>
-
-        {creditError && <div className="error-box">{creditError}</div>}
-
-        <button
-          className="settings-save-btn"
-          onClick={saveCreditLimit}
-          disabled={creditSaving || creditLimit === ""}
-        >
-          {creditSaving ? "Saving…" : "Save credit limit"}
-        </button>
-        {creditSaved && <div className="settings-success">Saved — applies to the next quotes and offers.</div>}
-      </div>
-
-      <div className="settings-card" style={{ marginTop: 18 }}>
-        <div className="settings-label" style={{ marginBottom: 4 }}>Where operators pay their monthly bill</div>
+        <div className="settings-label" style={{ marginBottom: 4 }}>Where operators pay their subscription</div>
         <div style={{ fontSize: 12, color: "#5b6b73", marginBottom: 12 }}>
           Shown in the operator app under Wallet → How to pay. Leave a field blank to hide it.
         </div>

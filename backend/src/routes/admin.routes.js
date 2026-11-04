@@ -5,20 +5,22 @@ import { prisma } from "../lib/prisma.js";
 import { requireAdmin } from "../lib/auth.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
-import { VETTING_STATUS, PLATFORM_FEE_TYPE } from "../lib/constants.js";
+import { VETTING_STATUS } from "../lib/constants.js";
 import {
-  getPlatformFeeSetting,
-  updatePlatformFeeSetting,
   getOfferTimeoutSeconds,
   updateOfferTimeoutSeconds,
-  getMinWalletBalance,
-  updateMinWalletBalance,
-  getCreditLimit,
-  updateCreditLimit,
+  getSubscriptionSettings,
+  updateSubscriptionSettings,
   getBillingPayTo,
   updateBillingPayTo,
 } from "../services/settings.js";
-import { getOperatorStatement, getBillingSummary, currentMonth } from "../services/billing.js";
+import {
+  getOperatorStatement,
+  getBillingSummary,
+  currentMonth,
+  setManualHold,
+  releaseOverdueHoldIfPaid,
+} from "../services/billing.js";
 import { getCompletedTripCounts } from "../services/rating.js";
 import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
 
@@ -44,6 +46,10 @@ const SAFE_OPERATOR_FIELDS = {
   ratingAvg: true,
   ratingCount: true,
   walletBalance: true,
+  subscriptionPrice: true,
+  billingHold: true,
+  billingHoldReason: true,
+  approvedAt: true,
   createdAt: true,
   updatedAt: true,
   _count: { select: { ambulances: true } },
@@ -72,16 +78,6 @@ const editOperatorSchema = z.object({
   baseFare: z.number().nonnegative().optional(),
   perKmRate: z.number().nonnegative().optional(),
 });
-
-const platformFeeSchema = z
-  .object({
-    feeType: z.enum([PLATFORM_FEE_TYPE.FLAT, PLATFORM_FEE_TYPE.PERCENT]),
-    feeValue: z.number().nonnegative(),
-  })
-  .refine((b) => b.feeType !== PLATFORM_FEE_TYPE.PERCENT || b.feeValue <= 100, {
-    message: "feeValue must be <= 100 when feeType is percent",
-    path: ["feeValue"],
-  });
 
 function withAmbulanceCount({ _count, ...operator }) {
   return { ...operator, ambulanceCount: _count.ambulances };
@@ -136,23 +132,6 @@ router.put(
   })
 );
 
-router.get(
-  "/settings/platform-fee",
-  requireAdmin,
-  asyncHandler(async (_req, res) => {
-    res.json(await getPlatformFeeSetting());
-  })
-);
-
-router.put(
-  "/settings/platform-fee",
-  requireAdmin,
-  validate(platformFeeSchema),
-  asyncHandler(async (req, res) => {
-    res.json(await updatePlatformFeeSetting(req.body));
-  })
-);
-
 // Operator accept window (seconds). 15s floor keeps the race winnable on a
 // phone; 300s cap keeps a dead operator from stalling an emergency cascade.
 const offerTimeoutSchema = z.object({ seconds: z.number().int().min(15).max(300) });
@@ -175,44 +154,29 @@ router.put(
   })
 );
 
-// Minimum wallet balance to go online (RM; 0 disables the gate).
-const minBalanceSchema = z.object({ amount: z.number().min(0).max(1000) });
+// SaaS subscription defaults: monthly price (RM, 0 = not charging yet),
+// due day (1-28 so it exists in every month) and grace days before an
+// unpaid operator is paused.
+const subscriptionSchema = z.object({
+  price: z.number().min(0).max(100000),
+  dueDay: z.number().int().min(1).max(28),
+  graceDays: z.number().int().min(0).max(60),
+});
 
 router.get(
-  "/settings/min-wallet-balance",
+  "/settings/subscription",
   requireAdmin,
   asyncHandler(async (_req, res) => {
-    res.json({ amount: await getMinWalletBalance() });
+    res.json(await getSubscriptionSettings());
   })
 );
 
 router.put(
-  "/settings/min-wallet-balance",
+  "/settings/subscription",
   requireAdmin,
-  validate(minBalanceSchema),
+  validate(subscriptionSchema),
   asyncHandler(async (req, res) => {
-    res.json({ amount: (await updateMinWalletBalance(req.body.amount)).minWalletBalance });
-  })
-);
-
-// Monthly billing credit limit (RM an operator may owe before they stop
-// receiving jobs; 0 = prepaid only, the original no-debt rule).
-const creditLimitSchema = z.object({ amount: z.number().min(0).max(100000) });
-
-router.get(
-  "/settings/credit-limit",
-  requireAdmin,
-  asyncHandler(async (_req, res) => {
-    res.json({ amount: await getCreditLimit() });
-  })
-);
-
-router.put(
-  "/settings/credit-limit",
-  requireAdmin,
-  validate(creditLimitSchema),
-  asyncHandler(async (req, res) => {
-    res.json({ amount: (await updateCreditLimit(req.body.amount)).creditLimit });
+    res.json(await updateSubscriptionSettings(req.body));
   })
 );
 
@@ -276,6 +240,38 @@ router.get(
   })
 );
 
+// Per-operator billing: custom subscription price (null = BO default) and
+// the manual pause switch (hidden from patients while paused).
+const operatorBillingSchema = z
+  .object({
+    subscriptionPrice: z.number().min(0).max(100000).nullable().optional(),
+    billingHold: z.boolean().optional(),
+  })
+  .refine((b) => b.subscriptionPrice !== undefined || b.billingHold !== undefined, "Nothing to update");
+
+router.post(
+  "/operators/:id/billing",
+  requireAdmin,
+  validate(operatorBillingSchema),
+  asyncHandler(async (req, res) => {
+    if (req.body.subscriptionPrice !== undefined) {
+      try {
+        await prisma.operator.update({
+          where: { id: req.params.id },
+          data: { subscriptionPrice: req.body.subscriptionPrice },
+        });
+      } catch (err) {
+        if (err.code === "P2025") throw new HttpError(404, "not_found", "Operator not found");
+        throw err;
+      }
+    }
+    if (req.body.billingHold !== undefined) await setManualHold(req.params.id, req.body.billingHold);
+    const operator = await prisma.operator.findUnique({ where: { id: req.params.id }, select: SAFE_OPERATOR_FIELDS });
+    const tripCounts = await getCompletedTripCounts([operator.id]);
+    res.json({ ...withAmbulanceCount(operator), tripCount: tripCounts[operator.id] || 0 });
+  })
+);
+
 router.post(
   "/operators/:id/approve",
   requireAdmin,
@@ -285,6 +281,12 @@ router.post(
       data: { vettingStatus: VETTING_STATUS.APPROVED },
       select: SAFE_OPERATOR_FIELDS,
     });
+    // First approval starts the subscription clock (charged from next month).
+    if (!operator.approvedAt) {
+      const approvedAt = new Date();
+      await prisma.operator.update({ where: { id: operator.id }, data: { approvedAt } });
+      operator.approvedAt = approvedAt;
+    }
     res.json(withAmbulanceCount(operator));
   })
 );
@@ -358,6 +360,8 @@ router.post(
       amount: req.body.amount,
       note: req.body.note,
     });
+    // A recorded payment that clears the debt lifts an automatic overdue pause.
+    if (req.body.type === WALLET_TX_TYPE.TOPUP) await releaseOverdueHoldIfPaid(req.params.id);
     res.status(201).json(row);
   })
 );

@@ -1,6 +1,5 @@
 import { prisma } from "../lib/prisma.js";
 import { config } from "../lib/env.js";
-import { PLATFORM_FEE_TYPE } from "../lib/constants.js";
 
 const SETTINGS_ID = 1;
 
@@ -11,31 +10,9 @@ const SETTINGS_ID = 1;
 export async function getAllSettings() {
   const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
   return {
-    feeSetting: row
-      ? { feeType: row.feeType, feeValue: row.feeValue }
-      : { feeType: PLATFORM_FEE_TYPE.FLAT, feeValue: config.platformServiceFee },
     offerTimeoutSeconds: row?.offerTimeoutSeconds ?? config.offerTimeoutSeconds,
-    minWalletBalance: row?.minWalletBalance ?? 50,
-    creditLimit: row?.creditLimit ?? 0,
+    subscription: toSubscription(row),
   };
-}
-
-// No row present (fresh DB, no admin has ever changed it) falls back live to
-// the pre-existing PLATFORM_SERVICE_FEE env var — preserves today's exact
-// behavior with no migration backfill needed.
-export async function getPlatformFeeSetting() {
-  const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
-  if (row) return { feeType: row.feeType, feeValue: row.feeValue };
-  return { feeType: PLATFORM_FEE_TYPE.FLAT, feeValue: config.platformServiceFee };
-}
-
-export async function updatePlatformFeeSetting({ feeType, feeValue }) {
-  const row = await prisma.platformSettings.upsert({
-    where: { id: SETTINGS_ID },
-    update: { feeType, feeValue },
-    create: { id: SETTINGS_ID, feeType, feeValue },
-  });
-  return { feeType: row.feeType, feeValue: row.feeValue };
 }
 
 // Admin-set operator accept window (seconds). Falls back to the
@@ -55,34 +32,29 @@ export async function updateOfferTimeoutSeconds(seconds) {
   return { offerTimeoutSeconds: row.offerTimeoutSeconds };
 }
 
-// Minimum wallet balance (RM) required to go online (BO-set; 0 disables).
-export async function getMinWalletBalance() {
+// SaaS subscription (2026-11-04): operators pay Lifeline a monthly
+// subscription, charged in advance on the 1st, due on dueDay, paused when
+// still unpaid graceDays after that. Replaced the per-trip platform fee, the
+// minimum wallet balance and the credit limit (their DB columns are unused).
+const toSubscription = (row) => ({
+  price: row?.subscriptionPrice ?? 0,
+  dueDay: row?.subscriptionDueDay ?? 7,
+  graceDays: row?.subscriptionGraceDays ?? 7,
+});
+
+export async function getSubscriptionSettings() {
   const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
-  return row?.minWalletBalance ?? 50;
+  return toSubscription(row);
 }
 
-export async function updateMinWalletBalance(amount) {
+export async function updateSubscriptionSettings({ price, dueDay, graceDays }) {
+  const data = { subscriptionPrice: price, subscriptionDueDay: dueDay, subscriptionGraceDays: graceDays };
   const row = await prisma.platformSettings.upsert({
     where: { id: SETTINGS_ID },
-    update: { minWalletBalance: amount },
-    create: { id: SETTINGS_ID, minWalletBalance: amount },
+    update: data,
+    create: { id: SETTINGS_ID, ...data },
   });
-  return { minWalletBalance: row.minWalletBalance };
-}
-
-// Monthly billing credit limit (RM an operator may owe; 0 = prepaid only).
-export async function getCreditLimit() {
-  const row = await prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
-  return row?.creditLimit ?? 0;
-}
-
-export async function updateCreditLimit(amount) {
-  const row = await prisma.platformSettings.upsert({
-    where: { id: SETTINGS_ID },
-    update: { creditLimit: amount },
-    create: { id: SETTINGS_ID, creditLimit: amount },
-  });
-  return { creditLimit: row.creditLimit };
+  return toSubscription(row);
 }
 
 // Where operators pay their monthly bill. Every field optional — the
@@ -125,11 +97,4 @@ export async function updateBillingPayTo({ accountName, bankName, accountNumber,
     create: { id: SETTINGS_ID, ...data },
   });
   return toPayTo(row);
-}
-
-export function resolveFeeAmount(setting, subtotal) {
-  if (setting.feeType === PLATFORM_FEE_TYPE.PERCENT) {
-    return Math.round(subtotal * (setting.feeValue / 100) * 100) / 100;
-  }
-  return setting.feeValue;
 }

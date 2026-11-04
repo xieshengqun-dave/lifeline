@@ -6,22 +6,17 @@ import { client, guestToken, operatorToken } from "./helpers/client.js";
 
 const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN;
 
-// Operator wallet (Grab agent model, decided 2026-07-31): platform fee
-// deducts from the operator's prepaid float on completion; an operator whose
-// wallet can't cover a job's fee neither appears in quotes nor receives the
-// offer.
-test("operator wallet: fee deduction, gating, admin ledger", async (t) => {
+// Operator wallet ledger. Since the SaaS model (2026-11-04) trips no longer
+// move money in the wallet (patients pay operators directly, no per-trip
+// fee); the ledger carries subscriptions (see billing.test.js) and
+// admin-recorded payments/adjustments.
+test("operator wallet: trips are fee-free, admin ledger", async (t) => {
   await resetDb();
   const operators = await seedFixtureOperators();
   const patientToken = await guestToken();
   const opToken = await operatorToken("fixture-a@test.example", FIXTURE_PASSWORD);
 
-  async function completeTrip() {
-    const quote = await client
-      .post("/api/bookings/quote")
-      .set("Authorization", `Bearer ${patientToken}`)
-      .send({ pickup: TEST_PICKUP, destination: TEST_DESTINATION });
-    const target = quote.body.operators.find((o) => o.operatorId === operators.A.id);
+  await t.test("completing a trip leaves the wallet untouched", async () => {
     const booked = await client
       .post("/api/bookings")
       .set("Authorization", `Bearer ${patientToken}`)
@@ -35,63 +30,35 @@ test("operator wallet: fee deduction, gating, admin ledger", async (t) => {
         .set("Authorization", `Bearer ${opToken}`)
         .send({ status });
     }
-    return { bookingId: booked.body.id, serviceFee: target.price.serviceFee };
-  }
-
-  let firstTrip;
-
-  await t.test("completing a trip deducts the service fee with a ledger row", async () => {
-    firstTrip = await completeTrip();
     const wallet = await client.get("/api/operator/wallet").set("Authorization", `Bearer ${opToken}`);
     assert.equal(wallet.status, 200);
-    assert.equal(wallet.body.balance, 500 - firstTrip.serviceFee);
-    const feeRow = wallet.body.transactions.find((x) => x.type === "service_fee");
-    assert.ok(feeRow, "service_fee ledger row exists");
-    assert.equal(feeRow.amount, -firstTrip.serviceFee);
-    assert.equal(feeRow.bookingId, firstTrip.bookingId);
+    assert.equal(wallet.body.balance, 500);
+    assert.equal(wallet.body.transactions.length, 0);
   });
 
-  await t.test("balance below the fee removes the operator from quotes and offers", async () => {
-    // Drain A to below one fee via admin withdrawal
-    const wallet = await client.get("/api/operator/wallet").set("Authorization", `Bearer ${opToken}`);
-    const drain = await client
-      .post(`/api/admin/operators/${operators.A.id}/wallet`)
-      .set("Authorization", `Bearer ${ADMIN_TOKEN}`)
-      .send({ type: "withdrawal", amount: -(wallet.body.balance - 1), note: "test drain to RM1" });
-    assert.equal(drain.status, 201);
-
+  await t.test("a low or negative balance no longer hides an operator", async () => {
+    await prisma.operator.update({ where: { id: operators.A.id }, data: { walletBalance: -50 } });
     const quote = await client
       .post("/api/bookings/quote")
       .set("Authorization", `Bearer ${patientToken}`)
       .send({ pickup: TEST_PICKUP, destination: TEST_DESTINATION });
-    assert.ok(
-      !quote.body.operators.some((o) => o.operatorId === operators.A.id),
-      "drained operator absent from quote"
-    );
-    // Booking targeting A anyway falls through to the next candidate (B)
-    const booked = await client
-      .post("/api/bookings")
-      .set("Authorization", `Bearer ${patientToken}`)
-      .send({ operatorId: operators.A.id, pickup: TEST_PICKUP, destination: TEST_DESTINATION, paymentMethod: "cash" });
-    assert.equal(booked.body.operatorId, operators.B.id, "offer cascaded to the next affordable operator");
-    await client.post(`/api/bookings/${booked.body.id}/cancel`).set("Authorization", `Bearer ${patientToken}`);
+    assert.ok(quote.body.operators.some((o) => o.operatorId === operators.A.id));
+    await prisma.operator.update({ where: { id: operators.A.id }, data: { walletBalance: 500 } });
   });
 
-  await t.test("admin top-up restores eligibility and the ledger is consistent", async () => {
+  await t.test("admin movements post ledger rows and the ledger stays consistent", async () => {
     const topup = await client
       .post(`/api/admin/operators/${operators.A.id}/wallet`)
       .set("Authorization", `Bearer ${ADMIN_TOKEN}`)
-      .send({ type: "topup", amount: 200, note: "test refill ref-123" });
+      .send({ type: "topup", amount: 200, note: "test payment ref-123" });
     assert.equal(topup.status, 201);
-    assert.equal(topup.body.balanceAfter, 201);
+    assert.equal(topup.body.balanceAfter, 700);
+    const adj = await client
+      .post(`/api/admin/operators/${operators.A.id}/wallet`)
+      .set("Authorization", `Bearer ${ADMIN_TOKEN}`)
+      .send({ type: "adjustment", amount: -25.5, note: "correction" });
+    assert.equal(adj.status, 201);
 
-    const quote = await client
-      .post("/api/bookings/quote")
-      .set("Authorization", `Bearer ${patientToken}`)
-      .send({ pickup: TEST_PICKUP, destination: TEST_DESTINATION });
-    assert.ok(quote.body.operators.some((o) => o.operatorId === operators.A.id), "refilled operator back in quote");
-
-    // Ledger sum equals balance (derivability invariant)
     const ledger = await client
       .get(`/api/admin/operators/${operators.A.id}/wallet`)
       .set("Authorization", `Bearer ${ADMIN_TOKEN}`);

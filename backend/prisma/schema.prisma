@@ -72,6 +72,17 @@ model Operator {
   // for cash trips). Always mutated together with a WalletTransaction row,
   // inside one DB transaction — see services/wallet.js. Not consumer e-money.
   walletBalance Float @default(0)
+  // SaaS subscription (2026-11-04). Null = the BO default price in
+  // PlatformSettings. billingHold hides the operator from patients (no
+  // quotes, no offers) — set by the admin ("manual") or automatically when a
+  // bill is unpaid past the grace period ("overdue"; released on payment).
+  subscriptionPrice Float?
+  billingHold       Boolean   @default(false)
+  billingHoldReason String? // manual | overdue
+  billingHoldAt     DateTime?
+  // First approval time. The first subscription charge is the month AFTER
+  // approval; null (operators approved before this existed) = charge now.
+  approvedAt        DateTime?
 
   walletTransactions WalletTransaction[]
   vettingStatus   String   @default("pending") // pending | approved | suspended
@@ -147,12 +158,14 @@ model WalletTransaction {
   id         String   @id @default(cuid())
   operator   Operator @relation(fields: [operatorId], references: [id])
   operatorId String
-  // topup | service_fee | trip_earning | withdrawal | adjustment
+  // topup | service_fee | subscription | trip_earning | withdrawal | adjustment
   type         String
   amount       Float // signed: credits positive, debits negative
   balanceAfter Float // denormalized audit trail
   bookingId    String? // set for service_fee / trip_earning rows
-  orderRef     String? @unique // PaymentOrder id for top-ups — DB-level once-only credit
+  // PaymentOrder id for top-ups, or "subscription:<operatorId>:<YYYY-MM>"
+  // for monthly charges — DB-level once-only movement either way.
+  orderRef     String? @unique
   note         String? // e.g. "Manual top-up — bank transfer ref 1234"
   createdAt    DateTime @default(now())
 
@@ -301,6 +314,14 @@ model PlatformSettings {
   // disables the gate). Enforced server-side on the availability toggle;
   // complements the per-job fee gate, doesn't replace it.
   minWalletBalance Float @default(50)
+  // SaaS subscription (2026-11-04): default monthly price (RM; operators
+  // may have their own), the day of the month it is due (charged on the
+  // 1st, in advance), and the grace days after that before an unpaid
+  // operator is paused. Supersedes the per-trip fee (feeType/feeValue), the
+  // minimum balance and the credit limit below — those columns are unused.
+  subscriptionPrice     Float @default(0)
+  subscriptionDueDay    Int   @default(7)
+  subscriptionGraceDays Int   @default(7)
   // Monthly billing (2026-10-20): how far (RM) an operator's wallet may go
   // negative before they stop receiving jobs. Patients pay operators
   // directly; fees accrue as a negative balance (= amount owed) and are

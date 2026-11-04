@@ -2,9 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireOperatorAuth } from "../lib/auth.js";
-import { getAllSettings, getBillingPayTo } from "../services/settings.js";
-import { availableCredit, amountOwed } from "../services/wallet.js";
-import { getOperatorStatement, currentMonth } from "../services/billing.js";
+import { getBillingPayTo } from "../services/settings.js";
+import { getOperatorStatement, getOperatorBillingInfo, currentMonth } from "../services/billing.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { acceptOffer, declineOffer } from "../services/offerEngine.js";
@@ -29,7 +28,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const operator = await prisma.operator.findUnique({
       where: { id: req.operatorId },
-      select: { id: true, name: true, online: true, vettingStatus: true },
+      select: { id: true, name: true, online: true, vettingStatus: true, billingHold: true, billingHoldReason: true },
     });
     res.json(operator);
   })
@@ -163,24 +162,22 @@ router.post(
   requireOperatorAuth,
   validate(availabilitySchema),
   asyncHandler(async (req, res) => {
-    // BO-set minimum to go online (server-side — a client-only check is not
-    // sufficient, per the design spec's own note). With monthly billing the
-    // check is on available credit (balance + credit limit), so an operator
-    // can keep working while they owe less than their limit. Going OFFLINE
-    // is always allowed.
+    // Paused operators (unpaid subscription, or paused by an admin) are
+    // hidden from patients, so going online is refused with the reason —
+    // server-side, a client-only check is not sufficient. Going OFFLINE is
+    // always allowed.
     if (req.body.online) {
-      const [operator, settings] = await Promise.all([
-        prisma.operator.findUnique({ where: { id: req.operatorId }, select: { walletBalance: true } }),
-        getAllSettings(),
-      ]);
-      const { minWalletBalance: minBalance, creditLimit } = settings;
-      if (minBalance > 0 && availableCredit(operator, creditLimit) < minBalance) {
+      const operator = await prisma.operator.findUnique({
+        where: { id: req.operatorId },
+        select: { billingHold: true, billingHoldReason: true },
+      });
+      if (operator.billingHold) {
         throw new HttpError(
           409,
-          "min_balance",
-          creditLimit > 0
-            ? `You've reached your credit limit (RM ${creditLimit.toFixed(0)}) — pay your outstanding bill to continue receiving requests`
-            : `Wallet balance must be at least RM ${minBalance.toFixed(0)} to go online — top up to continue receiving requests`
+          "billing_hold",
+          operator.billingHoldReason === "overdue"
+            ? "Your account is paused because your Lifeline subscription is overdue — pay your bill to receive requests again"
+            : "Your account is paused by Lifeline — please contact Lifeline support"
         );
       }
     }
@@ -193,7 +190,7 @@ router.get(
   "/wallet",
   requireOperatorAuth,
   asyncHandler(async (req, res) => {
-    const [operator, transactions, settings] = await Promise.all([
+    const [operator, transactions, billing] = await Promise.all([
       prisma.operator.findUnique({
         where: { id: req.operatorId },
         select: { walletBalance: true },
@@ -203,15 +200,12 @@ router.get(
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
-      getAllSettings(),
+      getOperatorBillingInfo(req.operatorId),
     ]);
     res.json({
       balance: operator.walletBalance,
-      minBalance: settings.minWalletBalance,
-      creditLimit: settings.creditLimit,
-      availableCredit: availableCredit(operator, settings.creditLimit),
-      amountOwed: amountOwed(operator.walletBalance),
-      fee: settings.feeSetting,
+      amountOwed: billing.amountOwed,
+      billing,
       transactions,
     });
   })

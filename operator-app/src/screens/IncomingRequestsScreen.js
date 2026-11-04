@@ -155,7 +155,7 @@ export default function IncomingRequestsScreen({ navigation }) {
                       <Text style={r.payoutSub}>
                         {offer.prepaid
                           ? "Patient already paid — this amount is credited to your wallet when the trip completes."
-                          : `You earn this in full — platform fee (RM ${offer.price.serviceFee.toFixed(2)}) is added on top for the patient.`}
+                          : "The patient pays you this directly when the trip ends. Lifeline takes no commission."}
                       </Text>
                     </View>
                   </View>

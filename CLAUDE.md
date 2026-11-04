@@ -42,6 +42,10 @@ Three sides to the product:
 - **Auth**: patients can be **guest** or sign in with **Google / Apple**. Operators have
   their own accounts.
 - If no operators remain, the app shows a **call 999** emergency fallback.
+- **Money (SaaS, 2026-11-04)**: patients pay the operator directly (cash /
+  operator's DuitNow). Lifeline charges no trip or patient fees — it earns a
+  **monthly operator subscription** (BO-set price, charged on the 1st). Unpaid
+  past the grace period → the operator is paused (hidden from patients).
 
 ## Tech stack
 

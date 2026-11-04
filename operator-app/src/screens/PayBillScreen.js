@@ -4,13 +4,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius } from "../theme/tokens";
-import { getOperatorWallet, getOperatorStatement, getPayTo, getPaymentsStatus } from "../api/client";
+import { getOperatorWallet, getPayTo, getPaymentsStatus } from "../api/client";
 import Header from "./_Header";
 import Card from "../components/ui/Card";
 
-// How to pay (monthly billing, 2026-10-20). Patients pay the operator
-// directly; Lifeline's platform fees build up in the wallet as an amount
-// owed and are billed monthly. The operator pays by bank transfer / DuitNow
+// How to pay (SaaS subscription, 2026-11-04). Patients pay the operator
+// directly; Lifeline's monthly subscription is posted to the wallet on the
+// 1st as an amount owed. The operator pays by bank transfer / DuitNow
 // to the company details the admin sets in Settings, and the admin records
 // the payment — so nothing here moves money in-app. If an online gateway is
 // configured, the old card/FPX top-up stays available as an extra option.
@@ -31,13 +31,12 @@ export default function PayBillScreen({ navigation }) {
   const load = React.useCallback(async () => {
     setState({ loading: true, error: null });
     try {
-      const [wallet, statement, payTo, payments] = await Promise.all([
+      const [wallet, payTo, payments] = await Promise.all([
         getOperatorWallet(),
-        getOperatorStatement(),
         getPayTo(),
         getPaymentsStatus().catch(() => ({ enabled: false })),
       ]);
-      setState({ loading: false, error: null, wallet, statement, payTo, onlineEnabled: !!payments.enabled });
+      setState({ loading: false, error: null, wallet, payTo, onlineEnabled: !!payments.enabled });
     } catch (e) {
       setState({ loading: false, error: e.message || "Could not load billing details." });
     }
@@ -45,7 +44,8 @@ export default function PayBillScreen({ navigation }) {
 
   React.useEffect(() => { load(); }, [load]);
 
-  const { wallet, statement, payTo } = state;
+  const { wallet, payTo } = state;
+  const billing = wallet?.billing;
   const hasBank = payTo && (payTo.accountName || payTo.bankName || payTo.accountNumber);
   const hasAnyDetails = hasBank || payTo?.qrImage || payTo?.instructions;
 
@@ -64,12 +64,17 @@ export default function PayBillScreen({ navigation }) {
           <Card style={p.owedCard}>
             <Text style={p.owedL}>{wallet.amountOwed > 0 ? "AMOUNT OWED TO LIFELINE" : "NOTHING OWED"}</Text>
             <Text style={p.owedN}>RM {wallet.amountOwed.toFixed(2)}</Text>
-            <Text style={p.owedS}>
-              This month: {statement.trips} trip{statement.trips === 1 ? "" : "s"} · RM {statement.fees.toFixed(2)} in platform fees
-            </Text>
-            {wallet.creditLimit > 0 && (
+            {!!billing && (
               <Text style={p.owedS}>
-                Credit limit RM {wallet.creditLimit.toFixed(0)} · RM {Math.max(0, wallet.availableCredit).toFixed(2)} left before new jobs pause
+                Subscription RM {billing.price.toFixed(2)} / month · due by{" "}
+                {new Date(new Date(billing.dueAt).getTime() - 1).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+              </Text>
+            )}
+            {billing?.billingHold && (
+              <Text style={[p.owedS, { color: C.red, fontWeight: "700" }]}>
+                {billing.billingHoldReason === "overdue"
+                  ? "Your account is paused until this is paid."
+                  : "Your account is paused by Lifeline. Please contact Lifeline."}
               </Text>
             )}
           </Card>
@@ -100,8 +105,9 @@ export default function PayBillScreen({ navigation }) {
           <View style={p.notice}>
             <Ionicons name="information-circle-outline" size={17} color={C.tealDeep} />
             <Text style={p.noticeT}>
-              Patients pay you directly for each trip. Lifeline's platform fee is billed monthly.
-              After you pay, your balance updates once Lifeline confirms the transfer.
+              Patients pay you directly for each trip; Lifeline only charges your monthly
+              subscription. After you pay, your balance updates once Lifeline confirms the
+              transfer, and a paused account is switched back on automatically.
             </Text>
           </View>
 

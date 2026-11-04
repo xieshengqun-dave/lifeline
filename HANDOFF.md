@@ -114,8 +114,10 @@ unverified mode works).
 - Operator location = **fixed base** (not live GPS) for v1.
 - Pricing = **operator-set fixed rates** (not platform formula).
 - Payment = **patients pay operators directly** (cash / operator's DuitNow);
-  Lifeline bills operators its platform fee **monthly**, with an admin-set
-  credit limit — decided 2026-10-20 after the Malaysian gateway rejection.
+  **Lifeline earns only from a monthly operator subscription (SaaS)** — no
+  per-trip fee, no patient fees. Charged on the 1st, due by a BO-set day,
+  auto-paused (hidden from patients) after BO-set grace days — decided
+  2026-11-04 (replaces the 2026-10-20 per-trip-fee + credit-limit model).
 - Accept window = **60 seconds** default, then move to next nearest.
 - Patient can **cancel** or **skip to next** during the wait (Grab-style).
 - Auth = **guest + Google + Apple**.
@@ -231,6 +233,73 @@ bug came out of it:
   (schedule ~20 min out → dispatches immediately → operator sees scheduled time).
   Then: production DB still only has the original 5 operators (dev-only seed for
   Klang) — reseed prod if demoing against Railway.
+
+### 2026-11-04 — SaaS model: monthly operator subscription, no trip fees
+User decision: patients pay operators directly and Lifeline **only** charges
+operators a monthly subscription. Answers to the design questions: price set
+by BO (default + per-operator custom), BO can pause/hide an operator so
+patients can't use them, unpaid → pause after a grace period, per-trip
+service fee removed entirely. Timing wasn't answered → chose **charged in
+advance on the 1st** (first charge the month after approval).
+
+- **Backend** (migration `20261104090000_saas_subscription`, hand-generated
+  with `prisma migrate diff` like the last one): `PlatformSettings` gained
+  `subscriptionPrice` (default **0 = not charging**), `subscriptionDueDay`
+  (7), `subscriptionGraceDays` (7). `Operator` gained `subscriptionPrice`
+  (custom, null = default), `billingHold` / `billingHoldReason` (manual |
+  overdue) / `billingHoldAt`, `approvedAt` (set on first approval).
+  - `computeFare` no longer adds a fee: `serviceFee` is always 0 and
+    `total = subtotal`. The fee, minimum-balance and credit-limit gates are
+    gone (endpoints removed, DB columns left unused). Legacy bookings that
+    were priced with a fee still get it charged on completion.
+  - `findEligibleOperators` excludes `billingHold` operators → paused
+    operators vanish from quotes, offers, cascades and scheduled dispatch.
+    Going online while paused → 409 `billing_hold`.
+  - `services/billing.js`: `runSubscriptionCycle(now)` (hourly sweep + 15s
+    after boot, started in server.js) posts one `subscription` ledger row per
+    approved operator per month (orderRef `subscription:<op>:<YYYY-MM>`, DB
+    unique → never double-charged), pauses approved operators still owing
+    after due day + grace days (and takes them offline + push), and releases
+    overdue holds once settled. Recording a "topup" payment in admin also
+    releases an overdue hold immediately. Manual holds stay until resumed.
+  - Endpoints: `GET/PUT /api/admin/settings/subscription`, `POST
+    /api/admin/operators/:id/billing` ({subscriptionPrice?, billingHold?});
+    operator `/wallet` now returns `billing` (price, due/pause dates, status,
+    hold); `/me` includes billingHold.
+  - Tests rewritten: settings (no fee, subscription settings), wallet (trips
+    fee-free, ledger), billing (9 checks: charge once, custom price, new
+    approval skipped, due → overdue → paused → hidden + can't go online,
+    payment releases, manual pause persists, statements). **All 8 suites
+    green** on a throwaway PG18.
+- **Admin**: Settings = Operator subscription card (price, due day, grace)
+  + accept window + where-to-pay (fee/min-balance/credit cards removed).
+  Operator drawer: SUBSCRIPTION section (custom price, Pause/Resume) + PAUSED
+  badge in the list. Billing page: plan / charged / payments / owed / status
+  (paid·due·overdue·paused) + Pause/Resume per row + subscription statements.
+  **Checked in a real browser** against a local backend + seeded preview DB:
+  set RM300 → cycle charged 6 operators → owed/due/dates correct → Pause
+  shows PAUSED in Billing and the drawer.
+- **Operator app**: offer card says "patient pays you directly, no
+  commission"; Wallet shows subscription price + due date / paused status;
+  red "account paused" banner on Home → How to pay; How to pay shows the
+  subscription and pause reason. Bundle ok, **not on a phone; APK not rebuilt**.
+- **Patient app**: fare card shows "Operator's price" (fee rows only for
+  older fee-bearing prices); receipt says Lifeline adds no fees. Bundle ok.
+- **Website** (`lifeline-website/`, own repo, commit 5907ed5): operators =
+  monthly subscription, no commission; prices = operator's own, no Lifeline
+  fee. Not published; `Lifeline_Website.zip` stale.
+- **⚠ To do / human decisions**: (1) push to GitHub main (= Railway deploy;
+  ask first) — safe, since price defaults to RM0 so nobody is charged until
+  set; (2) set the subscription price/due/grace + bank details in admin;
+  (3) existing production operators still hold demo float balances (RM200
+  seed float) that will absorb the first charges — zero them if that's
+  wrong; (4) rebuild both APKs; (5) HitPay is still on in production —
+  patients can still prepay online, which contradicts "Lifeline never holds
+  patient money"; switch it off (unset `PAYMENT_PROVIDER` on Railway, after
+  `railway link` to lovely-essence); (6) accountant: LHDN e-invoicing + SST
+  on SaaS fees.
+- **Next**: push + deploy, set the subscription in admin, rebuild the
+  operator APK, then a phone check of the paused flow.
 
 ### 2026-10-20 — Monthly operator billing: patients pay operators directly
 Context: the user's live Malaysian gateway application was **rejected** (HitPay

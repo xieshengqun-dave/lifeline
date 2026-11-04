@@ -70,8 +70,3 @@ export const AUTH_PROVIDER = Object.freeze({
   GOOGLE: "google",
   APPLE: "apple",
 });
-
-export const PLATFORM_FEE_TYPE = Object.freeze({
-  FLAT: "flat",
-  PERCENT: "percent",
-});

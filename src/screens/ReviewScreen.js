@@ -231,8 +231,16 @@ export default function ReviewScreen({ navigation }) {
 
         <Card style={{ marginBottom: spacing.cardGap }}>
           <Text style={rv.sect}>FARE ESTIMATE</Text>
-          <Row l="Subtotal" r={`RM ${op?.price.subtotal.toFixed(2)}`} />
-          <Row l="Service Fee" r={`RM ${op?.price.serviceFee.toFixed(2)}`} />
+          {/* No Lifeline fee since the SaaS model (2026-11-04): the total is the
+              operator's own price. The fee row only shows for older prices. */}
+          {op?.price.serviceFee > 0 ? (
+            <>
+              <Row l="Subtotal" r={`RM ${op.price.subtotal.toFixed(2)}`} />
+              <Row l="Service Fee" r={`RM ${op.price.serviceFee.toFixed(2)}`} />
+            </>
+          ) : (
+            <Row l="Operator's price" r={`RM ${op?.price.subtotal.toFixed(2)}`} />
+          )}
           <View style={rv.totalRow}>
             <Text style={rv.totalK}>Total</Text>
             <Text style={rv.totalV}>RM {op?.price.total.toFixed(2)}</Text>

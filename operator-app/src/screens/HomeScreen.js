@@ -26,6 +26,7 @@ export default function HomeScreen({ navigation }) {
   const [bookings, setBookings] = React.useState([]);
   const [fleet, setFleet] = React.useState({ ambulances: [] });
   const [wallet, setWallet] = React.useState(null);
+  const [hold, setHold] = React.useState(null); // billingHoldReason when paused
   const [toggling, setToggling] = React.useState(false);
 
   useFocusEffect(
@@ -41,6 +42,7 @@ export default function HomeScreen({ navigation }) {
           ]);
           if (cancelled) return;
           setOnline(me.online);
+          setHold(me.billingHold ? me.billingHoldReason || "manual" : null);
           setBookings(list);
           setFleet(fleetRes);
           setWallet(walletRes);
@@ -62,11 +64,15 @@ export default function HomeScreen({ navigation }) {
       setOnline(!next); // rollback
       // BO-set minimum float — the server is the authority; explain + route
       // to top-up rather than failing silently.
-      if (e?.code === "min_balance" || /balance|credit/i.test(e?.message || "")) {
-        Alert.alert("Payment needed to go online", e.message || "Your wallet balance is below the minimum required to go online.", [
+      // Paused (unpaid subscription or by Lifeline) — the server is the
+      // authority; explain + route to How to pay rather than failing silently.
+      if (e?.code === "billing_hold") {
+        Alert.alert("Account paused", e.message, [
           { text: "Not now" },
           { text: "How to pay", onPress: () => navigation.navigate("PayBill") },
         ]);
+      } else {
+        Alert.alert("Couldn't change status", e?.message || "Please try again.");
       }
     } finally {
       setToggling(false);
@@ -94,6 +100,20 @@ export default function HomeScreen({ navigation }) {
           </View>
           <Switch value={online} onValueChange={toggleOnline} disabled={toggling} trackColor={{ true: "rgba(255,255,255,0.4)", false: "rgba(255,255,255,0.25)" }} thumbColor="#fff" />
         </LinearGradient>
+
+        {hold && (
+          <TouchableOpacity style={h.holdBanner} activeOpacity={0.9} onPress={() => navigation.navigate("PayBill")}>
+            <Ionicons name="pause-circle" size={20} color={C.red} />
+            <View style={{ flex: 1 }}>
+              <Text style={h.holdT}>Your account is paused</Text>
+              <Text style={h.holdS}>
+                {hold === "overdue"
+                  ? "Your Lifeline subscription is overdue, so patients can't see you. Tap to see how to pay."
+                  : "Lifeline has paused your account, so patients can't see you. Please contact Lifeline."}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {pendingOffers.length > 0 && (
           <TouchableOpacity style={h.banner} onPress={() => navigation.navigate("IncomingRequests")}>
@@ -189,6 +209,12 @@ const h = StyleSheet.create({
   onlineSub: { ...type.body, fontSize: 11.5, color: "rgba(255,255,255,0.8)", marginTop: 2 },
   banner: { backgroundColor: C.tealSoft, borderRadius: radius.card, padding: 13, alignItems: "center", marginBottom: spacing.cardGap },
   bannerT: { ...type.bodySemibold, color: C.tealDeep, fontSize: 13 },
+  holdBanner: {
+    flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: "#fdecec",
+    borderRadius: radius.card, padding: 13, marginBottom: spacing.cardGap,
+  },
+  holdT: { ...type.bodySemibold, color: C.red, fontSize: 13.5 },
+  holdS: { ...type.body, color: C.body, fontSize: 12, marginTop: 2, lineHeight: 16 },
   sect: { ...type.caption, fontSize: 11, color: C.faint, marginBottom: 10 },
   statGrid: { flexDirection: "row", gap: 10, marginBottom: 20 },
   walletCard: {

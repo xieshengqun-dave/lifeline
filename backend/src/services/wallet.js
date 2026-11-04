@@ -11,13 +11,14 @@ import { HttpError } from "../middleware/errorHandler.js";
 export const WALLET_TX_TYPE = Object.freeze({
   TOPUP: "topup",
   SERVICE_FEE: "service_fee",
+  SUBSCRIPTION: "subscription",
   TRIP_EARNING: "trip_earning",
   WITHDRAWAL: "withdrawal",
   ADJUSTMENT: "adjustment",
 });
 
 const CREDIT_TYPES = new Set([WALLET_TX_TYPE.TOPUP, WALLET_TX_TYPE.TRIP_EARNING]);
-const DEBIT_TYPES = new Set([WALLET_TX_TYPE.SERVICE_FEE, WALLET_TX_TYPE.WITHDRAWAL]);
+const DEBIT_TYPES = new Set([WALLET_TX_TYPE.SERVICE_FEE, WALLET_TX_TYPE.SUBSCRIPTION, WALLET_TX_TYPE.WITHDRAWAL]);
 
 export async function applyWalletTransaction({ operatorId, type, amount, bookingId, orderRef, note }) {
   if (!Number.isFinite(amount) || amount === 0) {
@@ -58,7 +59,9 @@ export async function applyWalletTransaction({ operatorId, type, amount, booking
 // final idempotency arbiter; callers treat it as already-done.
 export const isDuplicateMovement = (err) => err?.code === "P2002";
 
-// Fee for a completed trip. Idempotent per booking: a second completion
+// Fee for a completed trip — legacy: since the SaaS model (2026-11-04) new
+// bookings carry serviceFee 0, so this only charges bookings priced under the
+// old per-trip fee. Idempotent per booking: a second completion
 // attempt (409-guarded upstream anyway) can't double-charge. Deducts even if
 // it takes the balance negative — the fee was locked in at offer time and
 // gating happens at offer time, not completion (a concurrent trip may have
@@ -99,17 +102,6 @@ export async function creditTripEarning(booking) {
     if (isDuplicateMovement(err)) return null;
     throw err;
   }
-}
-
-// Offer-time gate. Originally (2026-07-31) prepaid-only: the wallet had to
-// cover the job's fee, no debt. Since monthly billing (2026-10-20) the
-// admin-set credit limit lets the balance go negative (= amount owed, billed
-// monthly) down to -creditLimit. creditLimit 0 keeps the original rule.
-export const availableCredit = (operator, creditLimit = 0) => operator.walletBalance + creditLimit;
-
-export function canCoverFee(operator, serviceFee, creditLimit = 0) {
-  if (!serviceFee || serviceFee <= 0) return true;
-  return availableCredit(operator, creditLimit) >= serviceFee;
 }
 
 // Amount an operator owes the platform (a negative balance), never negative.
