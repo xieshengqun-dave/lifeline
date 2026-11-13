@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from "react-native";
 import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
@@ -18,6 +18,7 @@ import { authGuest, setAuthToken, setUnauthorizedHandler, savePushToken } from "
 import { registerForPushAsync } from "./src/lib/notifications";
 import { disconnectSocket } from "./src/api/socket";
 import { C } from "./src/theme/theme";
+import { MAX_CONTENT_WIDTH } from "./src/theme/tokens";
 
 import LoginScreen from "./src/screens/LoginScreen";
 import WelcomeScreen from "./src/screens/WelcomeScreen";
@@ -158,6 +159,7 @@ export default function App() {
     <AuthContext.Provider value={{ authLoading, token, user, signInGuest, signOut }}>
       <BookingContext.Provider value={{ booking, update, resetDraft }}>
         <StatusBar style="dark" />
+        <Frame>
         <NavigationContainer ref={navigationRef}>
           <Stack.Navigator
             initialRouteName={token ? "Welcome" : "Login"}
@@ -181,10 +183,28 @@ export default function App() {
             <Stack.Screen name="Profile" component={ProfileScreen} />
           </Stack.Navigator>
         </NavigationContainer>
+        </Frame>
       </BookingContext.Provider>
     </AuthContext.Provider>
   );
 }
+
+// Web only: on a wide screen (iPad, laptop) keep the phone-designed app in a
+// centred column on a navy backdrop. Phones are narrower than the column, so
+// nothing changes there; native builds skip the wrapper entirely.
+function Frame({ children }) {
+  if (Platform.OS !== "web") return children;
+  return (
+    <View style={frame.backdrop}>
+      <View style={frame.column}>{children}</View>
+    </View>
+  );
+}
+
+const frame = StyleSheet.create({
+  backdrop: { flex: 1, alignItems: "center", backgroundColor: C.navy },
+  column: { flex: 1, width: "100%", maxWidth: MAX_CONTENT_WIDTH, backgroundColor: C.card, overflow: "hidden" },
+});
 
 const boot = StyleSheet.create({
   container: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },

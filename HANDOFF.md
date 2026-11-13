@@ -146,6 +146,25 @@ unverified mode works).
 
 ---
 
+### 2026-11-13 (cont'd) — Patient web app on iPad: centred column
+User wants to demo on an **iPad Pro**. There is no iOS build (no Apple
+Developer account), so the iPad demo is the patient web app
+(https://lifeline-ios.netlify.app/, Netlify, auto-builds from GitHub main)
+plus the admin dashboard in Safari; the operator side stays on an Android
+phone. At 1024×1366 the web app stretched edge to edge (metre-wide buttons).
+- `App.js` `Frame` (web only): the app sits in a centred column
+  (`MAX_CONTENT_WIDTH` = 520, `src/theme/tokens.js`) on a navy backdrop.
+  Phones are narrower than the column and native builds skip the wrapper, so
+  nothing changes there. `AmbulancesScreen` caps its carousel card width to
+  the same constant.
+- Checked in a browser at 1024×1366 on a local copy: Welcome → Location →
+  Address picker → Assessment → Ambulances all sit correctly in the column.
+  The map shows its "unavailable" placeholder locally (no maps key for
+  localhost) — expected. Android bundle still exports.
+- **Not checked on a real iPad.** Operator app has no web deployment; its web
+  build has the same stretch and would need the same wrapper + its own
+  Netlify site if the operator side is ever wanted on an iPad.
+
 ### 2026-11-13 — Fleet & crew management + paying the operator (DuitNow QR, payment recorded by crew)
 User: "the codebase is yours, keep building". Surveyed the repo against the
 SaaS model and built the two gaps that would stop a real operator on day one.

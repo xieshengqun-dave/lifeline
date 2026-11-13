@@ -5,7 +5,7 @@ import MapView, { Marker, MAP_PROVIDER } from "../components/map";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
-import { type, spacing, radius, shadows } from "../theme/tokens";
+import { type, spacing, radius, shadows, MAX_CONTENT_WIDTH } from "../theme/tokens";
 import { BookingContext } from "../../App";
 import { getBookingQuote, ApiError } from "../api/client";
 import { toApiLocation, toApiPatient, normalizeOperator } from "../api/mappers";
@@ -18,7 +18,8 @@ const SORTS = [
   { key: "distance", label: "Nearest", cmp: (a, b) => a.dispatchDistanceKm - b.dispatchDistanceKm },
 ];
 
-const { width: SCREEN_W } = Dimensions.get("window");
+// Capped: on the web build the app sits in a centred column (App.js Frame).
+const SCREEN_W = Math.min(Dimensions.get("window").width, MAX_CONTENT_WIDTH);
 const CARD_W = SCREEN_W - spacing.screenPad * 2 - 28; // peek of the next card
 const CARD_SNAP = CARD_W + 12;
 const KL_FALLBACK = { latitude: 3.139, longitude: 101.6869 };

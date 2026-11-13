@@ -65,3 +65,8 @@ export const FONT_WEIGHTS_USED = [
   "PlusJakartaSans_700Bold",
   "PlusJakartaSans_800ExtraBold",
 ];
+
+// The app is designed for a phone. On the web build opened on a tablet or
+// desktop (e.g. the iPad PWA) it stays a centred column this wide instead of
+// stretching edge to edge — see the Frame wrapper in App.js.
+export const MAX_CONTENT_WIDTH = 520;
