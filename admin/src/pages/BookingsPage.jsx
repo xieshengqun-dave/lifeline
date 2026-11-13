@@ -34,6 +34,17 @@ function initials(name) {
   return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
+// How the fare was settled. Patients pay the operator directly, so this is
+// what the crew recorded — "in app" only for trips paid through a gateway.
+function paidCell(b) {
+  if (b.paidAt) return <StatusBadge tone="good" label="in app" />;
+  if (b.collectedVia === "cash") return <StatusBadge tone="good" label="cash" />;
+  if (b.collectedVia === "duitnow") return <StatusBadge tone="good" label="DuitNow" />;
+  if (b.collectedVia === "unpaid") return <StatusBadge tone="bad" label="not paid" />;
+  if (b.status === "completed") return <StatusBadge tone="pending" label="not recorded" />;
+  return <span style={{ color: "var(--color-faint)" }}>—</span>;
+}
+
 export default function BookingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [bookings, setBookings] = React.useState([]);
@@ -180,6 +191,7 @@ export default function BookingsPage() {
                     <th>Operator</th>
                     <th>Stage</th>
                     <th>Fare</th>
+                    <th>Paid</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -203,6 +215,7 @@ export default function BookingsPage() {
                       </td>
                       <td><StatusBadge tone={TONE_BY_STATUS[b.status] || "neutral"} label={stageContent(b)} /></td>
                       <td>{formatMoney(b.total ?? b.subtotal)}</td>
+                      <td>{paidCell(b)}</td>
                       <td><StatusBadge tone={TONE_BY_STATUS[b.status] || "neutral"} label={b.status === "expired" ? "999" : b.status} /></td>
                     </tr>
                   ))}

@@ -46,6 +46,13 @@ Three sides to the product:
   operator's DuitNow). Lifeline charges no trip or patient fees — it earns a
   **monthly operator subscription** (BO-set price, charged on the 1st). Unpaid
   past the grace period → the operator is paused (hidden from patients).
+- **Paying the operator (2026-11-13)**: each operator's bank details / DuitNow
+  QR are set by the back office only (never editable by the operator login),
+  shown to the patient once the operator accepts, and the crew records how the
+  patient paid (cash / DuitNow / not paid). Recording never moves money and an
+  unpaid trip never blocks a patient.
+- **Fleet**: operators manage their own ambulances and crew. An operator with
+  no active ambulance or no active crew is never offered to patients.
 
 ## Tech stack
 

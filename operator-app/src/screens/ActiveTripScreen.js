@@ -1,14 +1,15 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Linking } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Linking, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { type, spacing, radius } from "../theme/tokens";
-import { getOperatorBooking, getOperatorFleet, assignBookingResources, advanceBookingStatus } from "../api/client";
+import { getOperatorBooking, getOperatorFleet, assignBookingResources, advanceBookingStatus, recordCollection } from "../api/client";
 import { subscribeToBooking } from "../api/socket";
 import Header from "./_Header";
 import StatusPill from "../components/ui/StatusPill";
 import GradientButton from "../components/ui/GradientButton";
+import PaymentCollection, { amountToCollect } from "../components/PaymentCollection";
 
 // Mirrors the backend's BOOKING_STATUS_PROGRESSION (lib/constants.js) — a
 // target is allowed if it's strictly later than the current status, so a
@@ -71,14 +72,34 @@ export default function ActiveTripScreen({ route, navigation }) {
     }
   }
 
-  async function advanceNext() {
+  // Completing a trip the patient pays for directly: make sure the payment
+  // is on record first. Never blocks completion — "Not paid yet" is a valid
+  // answer and can be settled later from Trip History. (Alert buttons don't
+  // exist on web, so the web build relies on the payment card instead.)
+  function advanceNext() {
     const currentIndex = PROGRESSION.indexOf(booking.status);
     const nextStatus = PROGRESSION[currentIndex + 1];
     if (!nextStatus) return;
+    const needsAnswer = nextStatus === "completed" && !booking.paidAt && !booking.collectedVia && Platform.OS !== "web";
+    if (!needsAnswer) return advanceTo(nextStatus);
+    Alert.alert(
+      "Has the patient paid?",
+      `RM ${amountToCollect(booking).toFixed(2)} is paid to you directly.`,
+      [
+        { text: "Not paid yet", onPress: () => advanceTo(nextStatus, "unpaid") },
+        { text: "DuitNow received", onPress: () => advanceTo(nextStatus, "duitnow") },
+        { text: "Cash received", onPress: () => advanceTo(nextStatus, "cash") },
+      ],
+      { cancelable: true }
+    );
+  }
+
+  async function advanceTo(nextStatus, collectVia) {
     setAdvancing(true);
     try {
+      if (collectVia) await recordCollection(bookingId, collectVia);
       const updated = await advanceBookingStatus(bookingId, nextStatus);
-      setBooking(updated);
+      setBooking((b) => ({ ...b, ...updated }));
       if (nextStatus === "completed") {
         navigation.popToTop();
       }
@@ -167,6 +188,8 @@ export default function ActiveTripScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         )}
+
+        <PaymentCollection booking={booking} onRecorded={(fields) => setBooking((b) => ({ ...b, ...fields }))} />
 
         <Text style={t.sectOutside}>TRIP STATUS</Text>
         <View style={t.stepper}>

@@ -85,6 +85,9 @@ model Operator {
   approvedAt        DateTime?
 
   walletTransactions WalletTransaction[]
+  // Where PATIENTS pay this operator (bank details + DuitNow QR). Its own
+  // table so the QR image never rides along on operator queries.
+  payTo           OperatorPayTo?
   vettingStatus   String   @default("pending") // pending | approved | suspended
   online          Boolean  @default(false)
   ratingAvg       Float? // recomputed on each new Rating write, null until the first
@@ -131,6 +134,20 @@ model Crew {
   bookings Booking[]
 
   @@index([operatorId])
+}
+
+// ── Operator payment details shown to patients (2026-11-13). Set by the
+// back office after checking the QR really belongs to the operator; the
+// operator app shows it read-only. qrImage is a PNG/JPEG data URL. ──
+model OperatorPayTo {
+  operator      Operator @relation(fields: [operatorId], references: [id])
+  operatorId    String   @id
+  accountName   String?
+  bankName      String?
+  accountNumber String?
+  instructions  String?
+  qrImage       String?
+  updatedAt     DateTime @updatedAt
 }
 
 // ── Payment orders (provider-agnostic): one row per hosted-page payment
@@ -221,6 +238,12 @@ model Booking {
   paymentRef      String? // provider reference (payment intent / checkout session) — needed for refunds
   paidAt          DateTime?
   refundedAt      DateTime?
+  // Direct payment (2026-11-13): patients pay the operator, not Lifeline, so
+  // the crew records it. cash | duitnow | unpaid (flagged for follow-up);
+  // null = not recorded yet. Separate from paymentStatus/paidAt, which track
+  // money that went through an online gateway.
+  collectedVia    String?
+  collectedAt     DateTime?
 
   // What kind of trip this is — emergency (default) | transfer
   // (non-emergency inter-facility / planned medical transport).

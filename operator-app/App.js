@@ -28,6 +28,8 @@ import WalletScreen from "./src/screens/WalletScreen";
 import TopUpScreen from "./src/screens/TopUpScreen";
 import PayBillScreen from "./src/screens/PayBillScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
+import FleetScreen from "./src/screens/FleetScreen";
+import PaymentDetailsScreen from "./src/screens/PaymentDetailsScreen";
 
 const Stack = createNativeStackNavigator();
 const TOKEN_KEY = "lifeline_operator_token";
@@ -194,6 +196,8 @@ export default function App() {
             <Stack.Screen name="TopUp" component={TopUpScreen} />
             <Stack.Screen name="PayBill" component={PayBillScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="Fleet" component={FleetScreen} />
+            <Stack.Screen name="PaymentDetails" component={PaymentDetailsScreen} />
             <Stack.Screen name="ActiveTrip" component={ActiveTripScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="TripHistory" component={TripHistoryScreen} />
           </Stack.Navigator>

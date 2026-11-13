@@ -144,6 +144,9 @@ hosted backend; an operator phone receives it; admin dashboard shows it.
 ## Human-decision checklist (do NOT let these get stubbed silently)
 
 - [ ] Payment provider choice + keys (Stripe / iPay88 / Billplz) — real integration later.
+      (2026-11: live gateway application was rejected; the product now runs
+      without one — patients pay operators directly, operators pay Lifeline a
+      monthly subscription by bank transfer. See HANDOFF.md.)
 - [ ] Google & Apple sign-in credentials (Google Cloud + Apple Developer accounts).
 - [ ] Google Maps API key for production map quality (optional for pilot).
 - [ ] Medical-data / PDPA compliance review before any real patient data.

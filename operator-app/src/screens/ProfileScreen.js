@@ -10,8 +10,9 @@ import Header from "./_Header";
 import Card from "../components/ui/Card";
 import BottomTabBar from "../components/ui/BottomTabBar";
 
-// Minimal by design (mirrors the patient app's Profile): real session info +
-// sign out. Rate-card / fleet editing stays an admin operation for now.
+// Session info, the operator's own fleet & crew, the payment details
+// patients see, and sign out. Rate card and base location stay with
+// Lifeline's back office.
 export default function ProfileScreen({ navigation }) {
   const { operator, signOut } = React.useContext(AuthContext);
 
@@ -36,6 +37,25 @@ export default function ProfileScreen({ navigation }) {
           {!!operator?.email && <Text style={p.sub}>{operator.email}</Text>}
         </Card>
 
+        <Card noPad style={p.menu}>
+          <TouchableOpacity style={p.menuRow} onPress={() => navigation.navigate("Fleet")}>
+            <Ionicons name="medkit-outline" size={19} color={C.tealDeep} />
+            <View style={{ flex: 1 }}>
+              <Text style={p.menuT}>Fleet & crew</Text>
+              <Text style={p.menuS}>Your ambulances and the people who ride them</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.faint} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[p.menuRow, { borderBottomWidth: 0 }]} onPress={() => navigation.navigate("PaymentDetails")}>
+            <Ionicons name="qr-code-outline" size={19} color={C.tealDeep} />
+            <View style={{ flex: 1 }}>
+              <Text style={p.menuT}>Payment details</Text>
+              <Text style={p.menuS}>The bank account and DuitNow QR patients pay</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.faint} />
+          </TouchableOpacity>
+        </Card>
+
         <TouchableOpacity style={p.signOutBtn} onPress={confirmSignOut}>
           <Ionicons name="log-out-outline" size={18} color={C.red} />
           <Text style={p.signOutT}>Sign out</Text>
@@ -52,6 +72,13 @@ const p = StyleSheet.create({
   avatarT: { ...type.cardTitle, fontSize: 20, color: "#fff" },
   name: { ...type.cardTitle, fontSize: 17, color: C.ink },
   sub: { ...type.body, fontSize: 12.5, color: C.faint, marginTop: 3 },
+  menu: { marginBottom: 16 },
+  menuRow: {
+    flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 15, paddingHorizontal: spacing.cardPad,
+    borderBottomWidth: 1, borderBottomColor: C.line,
+  },
+  menuT: { ...type.bodySemibold, fontSize: 13.5, color: C.ink },
+  menuS: { ...type.body, fontSize: 11.5, color: C.faint, marginTop: 2 },
   signOutBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     backgroundColor: "#fff", borderWidth: 1.5, borderColor: C.redSoft,

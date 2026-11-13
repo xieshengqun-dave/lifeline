@@ -7,6 +7,9 @@ import { getOperatorStatement, getOperatorBillingInfo, currentMonth } from "../s
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError } from "../middleware/errorHandler.js";
 import { acceptOffer, declineOffer } from "../services/offerEngine.js";
+import { listFleet, createAmbulance, updateAmbulance, createCrew, updateCrew, hasUsableFleet } from "../services/fleet.js";
+import { getOperatorPayTo } from "../services/collection.js";
+import { createAmbulanceSchema, updateAmbulanceSchema, createCrewSchema, updateCrewSchema } from "../lib/fleetSchemas.js";
 import { OFFER_STATUS, BOOKING_STATUS } from "../lib/constants.js";
 
 const router = Router();
@@ -34,21 +37,50 @@ router.get(
   })
 );
 
+// Active units and crew by default (what the assignment picker needs);
+// ?all=1 also returns deactivated ones for the fleet management screen.
 router.get(
   "/fleet",
   requireOperatorAuth,
   asyncHandler(async (req, res) => {
-    const [ambulances, crew] = await Promise.all([
-      prisma.ambulance.findMany({
-        where: { operatorId: req.operatorId, active: true },
-        select: { id: true, plate: true, type: true, equipment: true },
-      }),
-      prisma.crew.findMany({
-        where: { operatorId: req.operatorId, active: true },
-        select: { id: true, name: true, role: true, phone: true },
-      }),
-    ]);
-    res.json({ ambulances, crew });
+    res.json(await listFleet(req.operatorId, { includeInactive: req.query.all === "1" }));
+  })
+);
+
+// Fleet & crew self-service (2026-11-13) — see services/fleet.js.
+router.post(
+  "/ambulances",
+  requireOperatorAuth,
+  validate(createAmbulanceSchema),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await createAmbulance(req.operatorId, req.body));
+  })
+);
+
+router.patch(
+  "/ambulances/:id",
+  requireOperatorAuth,
+  validate(updateAmbulanceSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await updateAmbulance(req.operatorId, req.params.id, req.body));
+  })
+);
+
+router.post(
+  "/crew",
+  requireOperatorAuth,
+  validate(createCrewSchema),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await createCrew(req.operatorId, req.body));
+  })
+);
+
+router.patch(
+  "/crew/:id",
+  requireOperatorAuth,
+  validate(updateCrewSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await updateCrew(req.operatorId, req.params.id, req.body));
   })
 );
 
@@ -61,6 +93,7 @@ router.get(
       select: {
         id: true, status: true, bookingType: true, scheduledAt: true, pickupName: true, destinationName: true, distanceKm: true,
         subtotal: true, serviceFee: true, total: true, paymentStatus: true,
+        paidAt: true, collectedVia: true, collectedAt: true,
         createdAt: true, updatedAt: true,
         ambulance: { select: { id: true, plate: true, type: true } },
         crew: { select: { id: true, name: true, role: true } },
@@ -180,6 +213,15 @@ router.post(
             : "Your account is paused by Lifeline — please contact Lifeline support"
         );
       }
+      // No ambulance or no crew = nobody to send. Matching hides such
+      // operators too (services/matching.js); this tells them why.
+      if (!(await hasUsableFleet(req.operatorId))) {
+        throw new HttpError(
+          409,
+          "no_fleet",
+          "Add at least one active ambulance and one crew member (Profile → Fleet & crew) before going online"
+        );
+      }
     }
     await prisma.operator.update({ where: { id: req.operatorId }, data: { online: req.body.online } });
     res.json({ online: req.body.online });
@@ -226,6 +268,17 @@ router.get(
   requireOperatorAuth,
   asyncHandler(async (_req, res) => {
     res.json(await getBillingPayTo());
+  })
+);
+
+// Where PATIENTS pay this operator (bank details / DuitNow QR). Read-only
+// here: the back office sets it after checking the QR belongs to the
+// operator, so a hijacked operator login can't redirect patients' money.
+router.get(
+  "/payment-details",
+  requireOperatorAuth,
+  asyncHandler(async (req, res) => {
+    res.json(await getOperatorPayTo(req.operatorId));
   })
 );
 

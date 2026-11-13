@@ -1,11 +1,11 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
 import { gradients, type, spacing, radius } from "../theme/tokens";
-import { getOperatorBookings } from "../api/client";
+import { getOperatorBookings, recordCollection } from "../api/client";
 import Header from "./_Header";
 import BottomTabBar from "../components/ui/BottomTabBar";
 
@@ -38,6 +38,23 @@ export default function TripHistoryScreen({ navigation }) {
       setLoading(false);
     })();
   }, [load]);
+
+  // Settle a trip that was completed without a recorded payment.
+  function settle(b) {
+    const record = async (via) => {
+      try {
+        await recordCollection(b.id, via);
+        await load();
+      } catch (e) {
+        Alert.alert("Couldn't save the payment", e.message || "Please try again.");
+      }
+    };
+    Alert.alert("Record payment", `${b.pickupName} → ${b.destinationName}\nRM ${(b.total ?? b.subtotal).toFixed(2)}`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "DuitNow received", onPress: () => record("duitnow") },
+      { text: "Cash received", onPress: () => record("cash") },
+    ]);
+  }
 
   async function onRefresh() {
     setRefreshing(true);
@@ -88,7 +105,19 @@ export default function TripHistoryScreen({ navigation }) {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={h.fare}>+RM {b.subtotal.toFixed(2)}</Text>
-                <Text style={h.status}>Completed</Text>
+                {(() => {
+                  // How the patient paid — recorded by the crew. An unpaid
+                  // or unrecorded trip can be settled here later.
+                  const settled = !!b.paidAt || b.collectedVia === "cash" || b.collectedVia === "duitnow";
+                  if (settled) {
+                    return <Text style={h.status}>{b.paidAt ? "Paid in app" : b.collectedVia === "cash" ? "Cash" : "DuitNow"}</Text>;
+                  }
+                  return (
+                    <TouchableOpacity onPress={() => settle(b)} hitSlop={8}>
+                      <Text style={h.unpaid}>{b.collectedVia === "unpaid" ? "Not paid" : "Payment?"} · update</Text>
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
             </View>
           ))}
@@ -117,4 +146,5 @@ const h = StyleSheet.create({
   date: { ...type.body, fontSize: 11, color: C.faint, marginTop: 3 },
   fare: { ...type.cardTitle, fontSize: 13, color: C.green },
   status: { ...type.body, fontSize: 10, color: C.faint, marginTop: 2 },
+  unpaid: { ...type.bodySemibold, fontSize: 10.5, color: C.red, marginTop: 2 },
 });

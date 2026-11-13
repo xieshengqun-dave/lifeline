@@ -8,6 +8,7 @@ import { BookingContext } from "../../App";
 import { getBooking, getTracking } from "../api/client";
 import { subscribeToBooking } from "../api/socket";
 import Header from "./_Header";
+import PayOperatorCard from "../components/PayOperatorCard";
 
 function formatTime(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -118,6 +119,8 @@ export default function TrackingScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </View>
+
+        <PayOperatorCard bookingId={bookingId} refreshKey={events.length} />
 
         <Text style={tr.sect}>TRIP PROGRESS</Text>
         {events.map((e, i) => (

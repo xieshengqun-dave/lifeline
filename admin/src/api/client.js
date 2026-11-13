@@ -78,3 +78,17 @@ export const updatePayToSetting = (data) =>
 export const getBilling = (month) => req(`/api/admin/billing?month=${encodeURIComponent(month)}`);
 export const getOperatorStatement = (id, month) =>
   req(`/api/admin/operators/${id}/statement?month=${encodeURIComponent(month)}`);
+
+// Fleet & crew, and the operator's own pay-to details shown to patients.
+export const getOperatorFleet = (id) => req(`/api/admin/operators/${id}/fleet`);
+export const createAmbulance = (id, data) =>
+  req(`/api/admin/operators/${id}/ambulances`, { method: "POST", body: JSON.stringify(data) });
+export const updateAmbulance = (id, ambulanceId, data) =>
+  req(`/api/admin/operators/${id}/ambulances/${ambulanceId}`, { method: "PATCH", body: JSON.stringify(data) });
+export const createCrew = (id, data) =>
+  req(`/api/admin/operators/${id}/crew`, { method: "POST", body: JSON.stringify(data) });
+export const updateCrew = (id, crewId, data) =>
+  req(`/api/admin/operators/${id}/crew/${crewId}`, { method: "PATCH", body: JSON.stringify(data) });
+export const getOperatorPayTo = (id) => req(`/api/admin/operators/${id}/pay-to`);
+export const updateOperatorPayTo = (id, data) =>
+  req(`/api/admin/operators/${id}/pay-to`, { method: "PUT", body: JSON.stringify(data) });

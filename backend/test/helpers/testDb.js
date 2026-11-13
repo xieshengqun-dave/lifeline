@@ -18,6 +18,7 @@ export async function resetDb() {
   await prisma.booking.deleteMany();
   await prisma.crew.deleteMany();
   await prisma.ambulance.deleteMany();
+  await prisma.operatorPayTo.deleteMany();
   await prisma.operator.deleteMany();
   await prisma.user.deleteMany();
   await prisma.platformSettings.deleteMany();
@@ -54,6 +55,10 @@ export async function seedFixtureOperators() {
         // Fixtures start with plenty so pre-wallet tests behave unchanged;
         // wallet tests set balances explicitly.
         walletBalance: 500,
+        // Matching only offers operators that have someone to send
+        // (2026-11-13) — one active ambulance and one crew member each.
+        ambulances: { create: [{ plate: `FIX ${spec.key}1`, type: "BLS" }] },
+        crew: { create: [{ name: `Fixture Medic ${spec.key}`, role: "PARAMEDIC" }] },
       },
     });
   }

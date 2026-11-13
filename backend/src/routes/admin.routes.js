@@ -23,6 +23,9 @@ import {
 } from "../services/billing.js";
 import { getCompletedTripCounts } from "../services/rating.js";
 import { applyWalletTransaction, WALLET_TX_TYPE } from "../services/wallet.js";
+import { listFleet, createAmbulance, updateAmbulance, createCrew, updateCrew } from "../services/fleet.js";
+import { getOperatorPayTo, setOperatorPayTo } from "../services/collection.js";
+import { createAmbulanceSchema, updateAmbulanceSchema, createCrewSchema, updateCrewSchema } from "../lib/fleetSchemas.js";
 
 // Static shared-secret admin auth, no admin user table — pilot-only,
 // intentionally minimal until the Phase 4 admin dashboard build.
@@ -220,6 +223,73 @@ router.put(
   validate(payToSchema),
   asyncHandler(async (req, res) => {
     res.json(await updateBillingPayTo(req.body));
+  })
+);
+
+// Where PATIENTS pay an operator (2026-11-13): the operator's own bank
+// details and DuitNow QR. Set here, by the back office, after checking the
+// name on the QR matches the operator. Same shape and rules as the company
+// details above.
+router.get(
+  "/operators/:id/pay-to",
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    res.json(await getOperatorPayTo(req.params.id));
+  })
+);
+
+router.put(
+  "/operators/:id/pay-to",
+  requireAdmin,
+  validate(payToSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await setOperatorPayTo(req.params.id, req.body));
+  })
+);
+
+// Fleet & crew (2026-11-13) — the same service the operator app uses, for
+// any operator. Lists include deactivated rows.
+router.get(
+  "/operators/:id/fleet",
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    res.json(await listFleet(req.params.id, { includeInactive: true }));
+  })
+);
+
+router.post(
+  "/operators/:id/ambulances",
+  requireAdmin,
+  validate(createAmbulanceSchema),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await createAmbulance(req.params.id, req.body));
+  })
+);
+
+router.patch(
+  "/operators/:id/ambulances/:ambulanceId",
+  requireAdmin,
+  validate(updateAmbulanceSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await updateAmbulance(req.params.id, req.params.ambulanceId, req.body));
+  })
+);
+
+router.post(
+  "/operators/:id/crew",
+  requireAdmin,
+  validate(createCrewSchema),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await createCrew(req.params.id, req.body));
+  })
+);
+
+router.patch(
+  "/operators/:id/crew/:crewId",
+  requireAdmin,
+  validate(updateCrewSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await updateCrew(req.params.id, req.params.crewId, req.body));
   })
 );
 

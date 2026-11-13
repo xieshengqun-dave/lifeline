@@ -71,6 +71,12 @@ export default function HomeScreen({ navigation }) {
           { text: "Not now" },
           { text: "How to pay", onPress: () => navigation.navigate("PayBill") },
         ]);
+      } else if (e?.code === "no_fleet") {
+        // Nobody to send yet — route to where they add an ambulance and crew.
+        Alert.alert("Add your fleet first", e.message, [
+          { text: "Not now" },
+          { text: "Fleet & crew", onPress: () => navigation.navigate("Fleet") },
+        ]);
       } else {
         Alert.alert("Couldn't change status", e?.message || "Please try again.");
       }

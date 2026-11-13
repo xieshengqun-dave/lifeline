@@ -952,3 +952,72 @@ tr.row-accent-amber {
     max-width: none;
   }
 }
+
+/* Operator drawer: fleet & crew lists, and the operator's pay-to QR */
+.fleet-subtitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-ink);
+  padding-top: 10px;
+}
+
+.fleet-empty {
+  font-size: 12.5px;
+  color: var(--color-faint);
+  padding: 6px 0;
+}
+
+.fleet-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 6px 0;
+  color: var(--color-ink);
+}
+
+.fleet-row-off .fleet-row-main {
+  color: var(--color-faint);
+}
+
+.fleet-row-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fleet-link {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-teal-deep);
+  cursor: pointer;
+}
+
+.fleet-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.payto-qr {
+  display: block;
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  margin: 4px 0 10px;
+}
+
+.payto-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--color-ink);
+  margin-bottom: 10px;
+}

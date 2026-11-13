@@ -8,6 +8,15 @@
 
 ## Current status snapshot
 
+**Where things stand (2026-11-13):** everything below is deployed and live
+(Railway backend, Netlify admin, EAS APKs) on the **SaaS model** — patients
+pay operators directly, Lifeline bills operators a monthly subscription. The
+newest work (fleet & crew management, operator DuitNow QR, crew "payment
+received" step — see the 2026-11-13 log entry) is **committed locally but not
+pushed**, so it is not in production yet. The paragraphs and tables under
+this one are the original July build history and are no longer current —
+trust the log entries, newest first.
+
 **Stage:** Web prototype validated → native scaffold running locally (Phase 0 done) →
 full marketplace backend (Phase 1) done → patient app wired to the real backend
 (Phase 2) done → operator app built (Phase 3) done → admin dashboard built (Phase 4)
@@ -135,6 +144,84 @@ unverified mode works).
 - Exact accept-window length — confirm with real operators.
 
 ---
+
+### 2026-11-13 — Fleet & crew management + paying the operator (DuitNow QR, payment recorded by crew)
+User: "the codebase is yours, keep building". Surveyed the repo against the
+SaaS model and built the two gaps that would stop a real operator on day one.
+
+**Gap 1 — nobody could add ambulances or crew.** Fleet rows only ever came
+from `seed.js`; an operator created in admin had no ambulance and no crew, so
+they could accept a trip but never assign anyone to it.
+- `services/fleet.js` (+ `lib/fleetSchemas.js`): list / add / edit /
+  activate-deactivate ambulances and crew, scoped to one operator. Nothing is
+  deleted (past trips reference the rows). Plates are normalised and unique
+  (409 `plate_taken`); a unit or person on a trip in progress can't be
+  deactivated (409 `ambulance_in_use` / `crew_in_use`); `fleetSummary`
+  ("2 ALS, 1 BLS") is recomputed on every ambulance change.
+- Operator endpoints: `GET /api/operator/fleet?all=1`, `POST/PATCH
+  /api/operator/ambulances[/:id]`, `POST/PATCH /api/operator/crew[/:id]`.
+  Admin endpoints: `GET /api/admin/operators/:id/fleet`, `POST/PATCH
+  .../ambulances[/:ambulanceId]`, `POST/PATCH .../crew[/:crewId]`.
+- **New rule**: `findEligibleOperators` only returns operators with ≥1 active
+  ambulance AND ≥1 active crew member; going online without them → 409
+  `no_fleet`. Checked read-only against production first: all 6 live
+  operators have fleets, so nobody disappears on deploy.
+- Operator app: Profile → **Fleet & crew** screen. Admin: FLEET & CREW
+  section in the operator drawer.
+
+**Gap 2 — "pay the operator by DuitNow" had nothing behind it.** The apps
+told patients to pay the operator's DuitNow, but no QR existed anywhere and
+nothing recorded whether the crew got paid.
+- Migration `20261113090000_operator_payto_collection` (additive, hand-
+  generated with `prisma migrate diff`): new table `OperatorPayTo` (account
+  name, bank, account number, note, QR data URL — its own table so the image
+  never rides along on operator queries/quotes) and `Booking.collectedVia`
+  (`cash | duitnow | unpaid`) + `collectedAt`. Separate from
+  `paymentStatus/paidAt`, which still mean "paid through a gateway".
+- `services/collection.js`. **Only the back office can set an operator's
+  pay-to details** (`GET/PUT /api/admin/operators/:id/pay-to`, drawer section
+  with QR upload and an "I checked this account belongs to the operator"
+  tick) — a stolen operator login must not be able to redirect patients'
+  money. Operator app shows them read-only (`GET
+  /api/operator/payment-details`, Profile → Payment details).
+- Patient: `GET /api/bookings/:id/pay-to` (own booking only; bank details
+  appear only once an operator has accepted). Tracking screen has a **Pay the
+  operator** card: amount, who to pay, QR + bank details behind a toggle, and
+  it flips to "received your payment" live when the crew records it.
+- Crew: `POST /api/bookings/:id/collection {via}` — Active Trip has a
+  **Collect from the patient** card (amount, full-screen QR to show the
+  patient, Cash / DuitNow / Not paid). Completing a trip with nothing
+  recorded asks first (never blocks; "Not paid yet" is allowed). Trip History
+  shows how each trip was paid and lets an unpaid one be settled later. The
+  patient timeline gets one "Payment received by the operator" line
+  (rewritten on correction, removed if taken back); "unpaid" is never shown
+  to the patient. Admin Bookings table has a **Paid** column.
+- No money moves and nothing is gated: an unpaid trip is only flagged.
+
+**Verified**: 9 backend suites green on a throwaway PG18 (new
+`fleet-and-collection.test.js`, 8 checks; fixtures now carry one ambulance +
+one crew each). Admin, operator-app web and patient-app web all **checked in
+a real browser** against a local seeded DB: add/deactivate ambulance, QR
+upload + ownership tick, full-screen QR, Cash received, patient card going
+from QR → "received your payment" live, Paid column. Both Expo apps bundle
+for Android. **Not on a phone; not pushed; APKs not rebuilt.**
+
+**Decisions I made (say if any is wrong)**: pay-to details are BO-only;
+operators manage their own fleet & crew without approval; the QR shows to the
+patient from the moment the operator accepts (not only at trip end); an
+unpaid trip never blocks a patient from booking again.
+
+**⚠ To do / human**: (1) push to GitHub main to deploy (asks first — it's
+production); (2) upload each operator's real DuitNow QR in admin; (3) rebuild
+both APKs — the 2026-11-04 rebuild is still outstanding too, one rebuild
+covers both; (4) still open from before: subscription price is RM0, HitPay is
+still on in production, demo operator accounts share a known password,
+accountant check on LHDN e-invoicing/SST.
+- **Next**: push + deploy, rebuild the two APKs, then a two-phone walkthrough
+  of a trip ending in a DuitNow scan.
+- **Ideas not built**: "Save QR to gallery" in the patient app (needs a new
+  native package); operators editing their own rates; a monthly "unpaid
+  trips" list for operators.
 
 ### 2026-07-27 — Grab-style map, real Trips tab, Klang operator, multi-crew, prod deploy hardening
 Live phone-testing session with the user (patient app on their phone from home in

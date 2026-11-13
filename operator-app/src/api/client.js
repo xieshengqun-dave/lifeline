@@ -50,6 +50,14 @@ export const operatorLogin = (email, password) =>
 // ── Operator ──
 export const getOperatorMe = () => req("/api/operator/me");
 export const getOperatorFleet = () => req("/api/operator/fleet");
+// Fleet & crew management — the full list (incl. deactivated) and edits.
+export const getOperatorFleetAll = () => req("/api/operator/fleet?all=1");
+export const createAmbulance = (data) => req("/api/operator/ambulances", { method: "POST", body: JSON.stringify(data) });
+export const updateAmbulance = (id, data) => req(`/api/operator/ambulances/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+export const createCrew = (data) => req("/api/operator/crew", { method: "POST", body: JSON.stringify(data) });
+export const updateCrew = (id, data) => req(`/api/operator/crew/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+// Where patients pay this operator (set by Lifeline's back office).
+export const getPaymentDetails = () => req("/api/operator/payment-details");
 export const getOperatorRequests = () => req("/api/operator/requests");
 export const acceptOffer = (offerId) => req(`/api/operator/offers/${offerId}/accept`, { method: "POST" });
 export const declineOffer = (offerId) => req(`/api/operator/offers/${offerId}/decline`, { method: "POST" });
@@ -69,3 +77,6 @@ export const getOperatorBooking = (id) => req(`/api/operator/bookings/${id}`);
 export const assignBookingResources = (id, p) => req(`/api/bookings/${id}/assign`, { method: "POST", body: JSON.stringify(p) });
 export const advanceBookingStatus = (id, status) =>
   req(`/api/bookings/${id}/status`, { method: "POST", body: JSON.stringify({ status }) });
+// The crew records how the patient paid: "cash" | "duitnow" | "unpaid".
+export const recordCollection = (id, via) =>
+  req(`/api/bookings/${id}/collection`, { method: "POST", body: JSON.stringify({ via }) });

@@ -17,7 +17,8 @@ import {
 import { paymentsEnabled, chargeBookingCard, createBookingPaymentSession } from "../services/payment.js";
 import { assignBookingResources } from "../services/assignment.js";
 import { submitRating, getCompletedTripCounts } from "../services/rating.js";
-import { OFFER_STATUS } from "../lib/constants.js";
+import { getBookingPayTo, recordCollection } from "../services/collection.js";
+import { OFFER_STATUS, COLLECTED_VIA } from "../lib/constants.js";
 
 const router = Router();
 
@@ -83,6 +84,8 @@ const assignSchema = z
     crewIds: z.array(z.string().min(1)).min(1).optional(),
   })
   .refine((b) => b.ambulanceId || b.crewIds?.length, { message: "ambulanceId or crewIds is required" });
+
+const collectionSchema = z.object({ via: z.enum(Object.values(COLLECTED_VIA)) });
 
 const ratingSchema = z.object({
   stars: z.number().int().min(1).max(5),
@@ -320,6 +323,28 @@ router.post(
   asyncHandler(async (req, res) => {
     const booking = await advanceBookingStatus(req.params.id, req.operatorId, req.body.status);
     res.json(booking);
+  })
+);
+
+// Who to pay and how — the operator's bank details / DuitNow QR and the
+// amount. Kept off GET /:id so the QR image isn't re-sent on every refresh.
+router.get(
+  "/:id/pay-to",
+  requirePatientAuth,
+  asyncHandler(async (req, res) => {
+    res.json(await getBookingPayTo(req.params.id, req.userId));
+  })
+);
+
+// The crew records how the patient paid the operator (cash / DuitNow), or
+// flags the trip unpaid. No money moves through Lifeline.
+router.post(
+  "/:id/collection",
+  requireOperatorAuth,
+  validate(collectionSchema),
+  asyncHandler(async (req, res) => {
+    const booking = await recordCollection(req.params.id, req.operatorId, req.body.via);
+    res.json({ bookingId: booking.id, collectedVia: booking.collectedVia, collectedAt: booking.collectedAt });
   })
 );
 

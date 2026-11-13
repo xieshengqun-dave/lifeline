@@ -2,6 +2,8 @@ import React from "react";
 import { getOperators, createOperator, updateOperator, approveOperator, suspendOperator, getOperatorWallet, applyWalletTransaction, updateOperatorBilling } from "../api/client";
 import { formatMoney } from "../lib/format";
 import StatusBadge from "../components/StatusBadge";
+import OperatorFleet from "../components/OperatorFleet";
+import OperatorPayTo from "../components/OperatorPayTo";
 
 const TONE_BY_STATUS = { approved: "good", suspended: "bad", pending: "pending" };
 const FILTERS = [
@@ -496,8 +498,13 @@ export default function OperatorsPage() {
             ))}
           </div>
 
-          <div className="drawer-section-title">FLEET · {selected.ambulanceCount} UNIT{selected.ambulanceCount === 1 ? "" : "S"}</div>
-          <div className="drawer-detail-row"><span>Summary</span><span>{selected.fleetSummary || "—"}</span></div>
+          <div className="drawer-section-title">PATIENT PAYMENTS · PAID TO THE OPERATOR</div>
+          <OperatorPayTo operatorId={selected.id} operatorName={selected.name} />
+
+          <div className="drawer-section-title">FLEET &amp; CREW · {selected.fleetSummary || "NO ACTIVE UNITS"}</div>
+          <OperatorFleet operatorId={selected.id} onChanged={() => getOperators().then(setOperators).catch(() => {})} />
+
+          <div className="drawer-section-title">RATING</div>
           <div className="drawer-detail-row"><span>Rating</span><span>{selected.ratingAvg != null ? `★ ${selected.ratingAvg.toFixed(1)} (${selected.ratingCount})` : "No ratings yet"}</span></div>
 
           <div className="drawer-actions">

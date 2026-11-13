@@ -17,6 +17,8 @@ app.use(cors());
 // The admin pay-to setting carries the company's QR image (a data URL), so
 // it alone gets a bigger body limit; everything else keeps the 100kb default.
 app.use("/api/admin/settings/pay-to", express.json({ limit: "1mb" }));
+// Same for an operator's own QR (shown to patients), set by the back office.
+app.use(/^\/api\/admin\/operators\/[^/]+\/pay-to$/, express.json({ limit: "1mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false })); // Fiuu posts form-encoded to return/notify
 

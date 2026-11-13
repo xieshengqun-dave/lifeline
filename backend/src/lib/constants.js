@@ -49,6 +49,14 @@ export const PAYMENT_STATUS = Object.freeze({
   REFUNDED: "refunded",
 });
 
+// How the crew recorded the patient's direct payment (Booking.collectedVia).
+// "unpaid" flags a trip for follow-up — it never blocks the patient.
+export const COLLECTED_VIA = Object.freeze({
+  CASH: "cash",
+  DUITNOW: "duitnow",
+  UNPAID: "unpaid",
+});
+
 export const BOOKING_TYPE = Object.freeze({
   EMERGENCY: "emergency",
   TRANSFER: "transfer",

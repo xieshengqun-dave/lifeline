@@ -17,6 +17,10 @@ export async function findEligibleOperators({ pickupLat, pickupLng, excludeOpera
       vettingStatus: VETTING_STATUS.APPROVED,
       online: true,
       billingHold: false,
+      // Someone to actually send (2026-11-13): an operator with no active
+      // ambulance or no crew is never offered to a patient.
+      ambulances: { some: { active: true } },
+      crew: { some: { active: true } },
       id: { notIn: excludeOperatorIds },
       baseLat: { gte: box.minLat, lte: box.maxLat },
       baseLng: { gte: box.minLng, lte: box.maxLng },

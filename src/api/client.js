@@ -66,4 +66,7 @@ export const getSavedCard = () => req("/api/payments/card");
 export const createCardSetup = () => req("/api/payments/card/setup", { method: "POST" });
 export const getBooking = (id) => req(`/api/bookings/${id}`);
 export const getTracking = (id) => req(`/api/bookings/${id}/tracking`);
+// Who to pay and how: amount, the operator's bank details / DuitNow QR, and
+// whether the crew has recorded the payment.
+export const getBookingPayTo = (id) => req(`/api/bookings/${id}/pay-to`);
 export const submitRating = (id, p) => req(`/api/bookings/${id}/rating`, { method: "POST", body: JSON.stringify(p) });
