@@ -19,8 +19,10 @@ import BottomSheetShell from "../components/ui/BottomSheetShell";
 // in a demo — exactly the "faked verification" this phase must avoid.
 function notConfigured(provider) {
   showAlert(
-    `${provider} sign-in`,
-    `Needs a real ${provider} developer account and API keys — not yet configured. Continue as guest for now.`
+    `${provider} sign-in is coming soon`,
+    // Patient-facing wording (2026-11-13): honest that it isn't available,
+    // without the developer detail — the reason lives in the comment above.
+    `Signing in with ${provider} isn't available yet. Continue as guest — you don't need an account to request an ambulance.`
   );
 }
 
