@@ -19,6 +19,7 @@ import { registerForPushAsync } from "./src/lib/notifications";
 import { disconnectSocket } from "./src/api/socket";
 import { C } from "./src/theme/theme";
 import { MAX_CONTENT_WIDTH } from "./src/theme/tokens";
+import AlertHost from "./src/components/ui/AlertHost";
 
 import LoginScreen from "./src/screens/LoginScreen";
 import WelcomeScreen from "./src/screens/WelcomeScreen";
@@ -183,6 +184,7 @@ export default function App() {
             <Stack.Screen name="Profile" component={ProfileScreen} />
           </Stack.Navigator>
         </NavigationContainer>
+        <AlertHost />
         </Frame>
       </BookingContext.Provider>
     </AuthContext.Provider>

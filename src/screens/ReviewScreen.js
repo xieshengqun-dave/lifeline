@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Linking } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking } from "react-native";
+import { showAlert } from "../lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { C } from "../theme/theme";
@@ -127,7 +128,7 @@ export default function ReviewScreen({ navigation }) {
       // watch — the dispatch happens closer to pickup.
       if (res.scheduledAt && !res.currentOffer) {
         const when = new Date(res.scheduledAt);
-        Alert.alert(
+        showAlert(
           "Transport scheduled",
           `Pickup ${when.toLocaleDateString()} at ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}.\n\nWe'll start finding your operator about 45 minutes before pickup. Track or cancel it from the Trips tab.`,
           [{ text: "OK", onPress: goHome }]

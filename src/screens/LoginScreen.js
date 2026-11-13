@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Image } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { showAlert } from "../lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,7 +18,7 @@ import BottomSheetShell from "../components/ui/BottomSheetShell";
 // presenting it as a real sign-in would look identical to a verified login
 // in a demo — exactly the "faked verification" this phase must avoid.
 function notConfigured(provider) {
-  Alert.alert(
+  showAlert(
     `${provider} sign-in`,
     `Needs a real ${provider} developer account and API keys — not yet configured. Continue as guest for now.`
   );

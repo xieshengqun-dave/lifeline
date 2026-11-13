@@ -146,6 +146,29 @@ unverified mode works).
 
 ---
 
+### 2026-11-13 (cont'd twice) — Web app: every pop-up was dead (Cancel did nothing)
+User, on the iPad: "i try to cancel request but no response". Cause: React
+Native's `Alert.alert` is a **no-op on the web build** — no dialog, no button
+callbacks. So in the patient web app (the only path for iOS users) the
+"Cancel request?" confirmation, every error message ("Couldn't cancel",
+"Couldn't skip"), the "Transport scheduled → OK → home" notices, sign-out from
+the avatar and the Google/Apple "not configured" notice all silently did
+nothing. Present since the PWA was built (2026-07-30); native was never
+affected.
+- `src/lib/alert.js` `showAlert(title, message, buttons)` — same signature as
+  `Alert.alert`. Native → the system alert, unchanged. Web → an in-app dialog
+  from `src/components/ui/AlertHost.js` (mounted once in `App.js`, queues
+  alerts, closes only via its buttons; falls back to `window.confirm/alert`
+  if the host is somehow absent).
+- All 10 `Alert.alert` calls in the patient app now use it. **Rule: never
+  call `Alert.alert` directly in the patient app.**
+- Verified in a browser at iPad Pro size on a local copy: book → Waiting →
+  Cancel request → dialog → "Yes, cancel" → back to Home, booking `cancelled`
+  in the DB. Android bundle still exports.
+- **Operator app has the same 18 dead alerts on web** — not fixed, because
+  its web build is not deployed anywhere (Android APK only). Port
+  `alert.js`/`AlertHost` before ever publishing the operator web build.
+
 ### 2026-11-13 (cont'd) — Patient web app on iPad: centred column
 User wants to demo on an **iPad Pro**. There is no iOS build (no Apple
 Developer account), so the iPad demo is the patient web app

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Image } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { showAlert } from "../lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -51,11 +52,11 @@ export default function WelcomeScreen({ navigation }) {
   ];
 
   function handleNotifications() {
-    Alert.alert("Notifications", "Notifications aren't available yet.");
+    showAlert("Notifications", "Notifications aren't available yet.");
   }
 
   function handleAvatarPress() {
-    Alert.alert("Account", undefined, [
+    showAlert("Account", undefined, [
       { text: "Sign Out", style: "destructive", onPress: doSignOut },
       { text: "Cancel", style: "cancel" },
     ]);

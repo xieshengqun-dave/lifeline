@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, BackHandler, AppState } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, BackHandler, AppState } from "react-native";
+import { showAlert } from "../lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -100,7 +101,7 @@ export default function WaitingScreen({ navigation }) {
         } else if (payload.status === "requested" && payload.reason === "paid" && schedAt) {
           // Prepaid scheduled booking: payment landed, dispatch happens
           // closer to pickup — nothing to watch here.
-          Alert.alert(
+          showAlert(
             "Paid & scheduled",
             "Payment received. We'll start finding your operator about 45 minutes before pickup — track it in the Trips tab.",
             [{ text: "OK", onPress: goHome }]
@@ -154,13 +155,13 @@ export default function WaitingScreen({ navigation }) {
         if (b.status === prev) return prev;
         if (b.status === "accepted") navigation.replace("Payment");
         else if (b.status === "requested" && b.scheduledAt && prev === "pending_payment") {
-          Alert.alert(
+          showAlert(
             "Paid & scheduled",
             "Payment received. We'll start finding your operator about 45 minutes before pickup — track it in the Trips tab.",
             [{ text: "OK", onPress: goHome }]
           );
         } else if (b.status === "cancelled" && prev === "pending_payment") {
-          Alert.alert("Booking cancelled", "The payment wasn't completed in time.", [{ text: "OK", onPress: goHome }]);
+          showAlert("Booking cancelled", "The payment wasn't completed in time.", [{ text: "OK", onPress: goHome }]);
         }
         return b.status;
       });
@@ -183,7 +184,7 @@ export default function WaitingScreen({ navigation }) {
   }, [initializing, status, syncFromServer]);
 
   function confirmCancel() {
-    Alert.alert("Cancel request?", "Are you sure you want to cancel this ambulance request?", [
+    showAlert("Cancel request?", "Are you sure you want to cancel this ambulance request?", [
       { text: "No" },
       { text: "Yes, cancel", style: "destructive", onPress: doCancel },
     ]);
@@ -196,7 +197,7 @@ export default function WaitingScreen({ navigation }) {
       resetDraft();
       navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (e) {
-      Alert.alert("Couldn't cancel", e.message || "Please check the current status.");
+      showAlert("Couldn't cancel", e.message || "Please check the current status.");
     } finally {
       setActionInFlight(false);
     }
@@ -208,7 +209,7 @@ export default function WaitingScreen({ navigation }) {
       await skipBooking(bookingId);
       // The updated operator/status arrive via the socket events above.
     } catch (e) {
-      Alert.alert("Couldn't skip", e.message || "Please check the current status.");
+      showAlert("Couldn't skip", e.message || "Please check the current status.");
     } finally {
       setActionInFlight(false);
     }
