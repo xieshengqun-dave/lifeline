@@ -12,8 +12,9 @@
 (Railway backend, Netlify admin, EAS APKs) on the **SaaS model** — patients
 pay operators directly, Lifeline bills operators a monthly subscription. The
 newest work (fleet & crew management, operator DuitNow QR, crew "payment
-received" step — see the 2026-11-13 log entry) is **committed locally but not
-pushed**, so it is not in production yet. The paragraphs and tables under
+received" step — see the 2026-11-13 log entry) was **pushed and deployed on
+2026-11-13** (commit f63db8f); the APKs have not been rebuilt, so phones still
+run the older app screens. The paragraphs and tables under
 this one are the original July build history and are no longer current —
 trust the log entries, newest first.
 
@@ -204,21 +205,27 @@ one crew each). Admin, operator-app web and patient-app web all **checked in
 a real browser** against a local seeded DB: add/deactivate ambulance, QR
 upload + ownership tick, full-screen QR, Cash received, patient card going
 from QR → "received your payment" live, Paid column. Both Expo apps bundle
-for Android. **Not on a phone; not pushed; APKs not rebuilt.**
+for Android. **Not on a phone; APKs not rebuilt.**
+
+**Deployed 2026-11-13** (user said "Yes, push"): commit f63db8f → Railway
+`lovely-essence` production, migration applied. Read-only production check:
+new fleet and pay-to endpoints answer, all 6 operators still have 2–3 active
+ambulances + 2 crew and still appear in a patient quote, no operator has a QR
+on file yet, Netlify admin bundle contains the new drawer sections.
 
 **Decisions I made (say if any is wrong)**: pay-to details are BO-only;
 operators manage their own fleet & crew without approval; the QR shows to the
 patient from the moment the operator accepts (not only at trip end); an
 unpaid trip never blocks a patient from booking again.
 
-**⚠ To do / human**: (1) push to GitHub main to deploy (asks first — it's
-production); (2) upload each operator's real DuitNow QR in admin; (3) rebuild
+**⚠ To do / human**: (1) ~~push to GitHub main~~ done; (2) upload each
+operator's real DuitNow QR in admin; (3) rebuild
 both APKs — the 2026-11-04 rebuild is still outstanding too, one rebuild
 covers both; (4) still open from before: subscription price is RM0, HitPay is
 still on in production, demo operator accounts share a known password,
 accountant check on LHDN e-invoicing/SST.
-- **Next**: push + deploy, rebuild the two APKs, then a two-phone walkthrough
-  of a trip ending in a DuitNow scan.
+- **Next**: rebuild the two APKs, upload one real operator QR, then a
+  two-phone walkthrough of a trip ending in a DuitNow scan.
 - **Ideas not built**: "Save QR to gallery" in the patient app (needs a new
   native package); operators editing their own rates; a monthly "unpaid
   trips" list for operators.
